@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Never commit personal / tax data
+tds_config.json
+*.csi
+*.fvu
+*.zip
+*.pdf
+*.err
+*.xlsx
+144RQ*.txt
+challans.json

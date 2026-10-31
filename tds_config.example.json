@@ -1,0 +1,39 @@
+{
+  "filing_root": "~/Documents/TDS Filing",
+  "folder_label": "calendar",
+  "utility": {
+    "version": "1.2",
+    "rpu_name": "Protean RPU 1.2",
+    "fvu_dir": "~/Documents/TDS_RPU_1.2/TDS_STANDALONE_FVU_1.2",
+    "spec_xlsx": "~/Documents/TDS_RPU_1.2/fmt144.xlsx"
+  },
+  "deductor": {
+    "tan": "ABCD12345E",
+    "pan": "ABCDE1234F",
+    "name": "TEST DEDUCTOR",
+    "designation": "TENANT",
+    "type": "Q",
+    "address": ["101", "", "MAIN ROAD", "SOME AREA", "SOME DISTRICT"],
+    "country": "INDIA",
+    "state_code": "15",
+    "pincode": "560001",
+    "email": "TEST@EXAMPLE.COM",
+    "phone_cc": "91",
+    "phone": "9999999999"
+  },
+  "deductee": {
+    "pan": "ZYXWV9876U",
+    "name": "TEST LANDLORD",
+    "status": "2",
+    "section_code": "1057",
+    "remittance_code": "99",
+    "country_code": "15",
+    "rate_percent": 31.2,
+    "rate_basis": "A",
+    "monthly_rent": 100000,
+    "rent_overrides": {}
+  },
+  "challans_per_quarter": 3,
+  "minor_head": "200",
+  "rrr": {}
+}
