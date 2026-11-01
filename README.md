@@ -66,6 +66,7 @@ npx skills remove tds-filing -g
 
 **Check it:** start the agent and ask "prepare my TDS filing for 2026-27 Q3". The skill runs the CLI through
 `uvx`, so the machine needs uv and access to this repo.
+
 ## Quarterly workflow
 1. Pay TDS monthly (Challan 281) and save each `…SBIN_ChallanReceipt.pdf` into the filing root.
 2. After the quarter, download the CSI file from the portal into the quarter folder
