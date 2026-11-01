@@ -129,7 +129,80 @@ def check_action(name: str, params: dict | None, label: str = "", page_url: str 
     return None
 
 
-def guarded_tools(bu, blocked: list[str], audit: Path | None = None):
+# --- Record mode: capture what a scripted workflow needs (selectors, page outlines, XHR endpoints) -------------
+OUTLINE_JS = """() => {
+  const out = []; const want = 'a,button,input,select,textarea,label,table,thead,tbody,tr,th,td,mat-card,mat-row,mat-cell,mat-header-cell,mat-tab,[role],[id],[formcontrolname],h1,h2,h3,h4,mat-dialog-container,mat-paginator,.mat-paginator-range-label';
+  const nodes = document.querySelectorAll(want);
+  const path = (el) => { const p = []; while (el && el.nodeType === 1 && p.length < 8) {
+      let s = el.tagName.toLowerCase(); if (el.id) { s += '#' + el.id; p.unshift(s); break; }
+      const c = (el.getAttribute('class') || '').trim().split(/\\s+/).filter(x => x && !x.startsWith('ng-')).slice(0, 2);
+      if (c.length) s += '.' + c.join('.'); p.unshift(s); el = el.parentElement; } return p.join(' > '); };
+  for (const el of nodes) { if (out.length >= 1500) break;
+    const r = el.getBoundingClientRect(); if (r.width === 0 && r.height === 0) continue;
+    const t = (el.innerText || el.value || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+    out.push({tag: el.tagName.toLowerCase(), id: el.id || undefined, role: el.getAttribute('role') || undefined,
+      cls: (el.getAttribute('class') || '').slice(0, 80) || undefined, fc: el.getAttribute('formcontrolname') || undefined,
+      aria: el.getAttribute('aria-label') || undefined, type: el.getAttribute('type') || undefined, text: t || undefined,
+      path: path(el)}); }
+  return JSON.stringify({url: location.href, title: document.title, n: document.getElementsByTagName('*').length, nodes: out});
+}"""
+XHR_JS = """() => JSON.stringify(performance.getEntriesByType('resource')
+  .filter(e => ['xmlhttprequest', 'fetch'].includes(e.initiatorType))
+  .map(e => ({url: e.name.split('?')[0], t: Math.round(e.startTime), ms: Math.round(e.duration), status: e.responseStatus || null})))"""
+
+
+class Recorder:
+    """Writes record/actions.jsonl (element details per action), record/pages/NNN.json (DOM outline after each
+    action) and record/xhr.jsonl (XHR/fetch endpoints seen, URL+timing only). Local, 0600, under the run log."""
+
+    def __init__(self, log_dir: Path):
+        self.dir = log_dir / "record"
+        (self.dir / "pages").mkdir(parents=True, exist_ok=True)
+        self.n = 0
+        self.seen_xhr: set[tuple[str, int]] = set()
+
+    def _append(self, name: str, rec: dict) -> None:
+        import json
+        fd = os.open(self.dir / name, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+
+    def element(self, action: str, params: dict, node, url: str) -> None:
+        attrs = dict(getattr(node, "attributes", None) or {}) if node is not None else {}
+        ax = getattr(node, "ax_node", None)
+        xpath = ""
+        try:
+            xpath = node.xpath if node is not None else ""
+        except Exception:  # noqa: BLE001
+            pass
+        self._append("actions.jsonl", {"seq": self.n + 1, "action": action, "params": params, "url": url,
+                                       "tag": getattr(node, "tag_name", None), "attrs": attrs, "xpath": xpath,
+                                       "ax_role": getattr(ax, "role", None), "ax_name": getattr(ax, "name", None),
+                                       "label": element_label(node)[:300]})
+
+    async def after(self, action: str, browser_session) -> None:
+        import json
+        import time
+        self.n += 1
+        try:
+            page = await browser_session.get_current_page()
+            if page is None:
+                return
+            outline = await page.evaluate(OUTLINE_JS)
+            p = self.dir / "pages" / f"{self.n:03d}-{action}.json"
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as fh:
+                fh.write(outline)
+            for e in json.loads(await page.evaluate(XHR_JS)):
+                key = (e["url"], e["t"])
+                if key not in self.seen_xhr:
+                    self.seen_xhr.add(key)
+                    self._append("xhr.jsonl", {**e, "after_seq": self.n, "ts": time.time()})
+        except Exception as e:  # noqa: BLE001 - recording must never break the run
+            self._append("actions.jsonl", {"seq": self.n, "record_error": str(e)[:300]})
+
+
+def guarded_tools(bu, blocked: list[str], audit: Path | None = None, recorder: Recorder | None = None):
     """bu.Tools subclass that checks every action against check_action() before browser-use executes it."""
 
     class GuardedTools(bu.Tools):
@@ -143,6 +216,7 @@ def guarded_tools(bu, blocked: list[str], audit: Path | None = None):
                     url = await browser_session.get_current_page_url()
                 except Exception:  # noqa: BLE001
                     url = ""
+                node = None
                 if name in ELEMENT_ACTIONS and params.get("index") is not None:
                     node = await browser_session.get_element_by_index(params["index"])
                     if node is None:
@@ -169,7 +243,12 @@ def guarded_tools(bu, blocked: list[str], audit: Path | None = None):
                     return bu.ActionResult(error=(
                         f"BLOCKED by tds-filer safety guard: {reason}. Uploading, filing, paying, signing and "
                         f"e-verifying are disabled in code; only view and download."))
-            return await super().act(action, browser_session, *args, **kwargs)
+                if recorder is not None:
+                    recorder.element(name, params, node, url)
+            res = await super().act(action, browser_session, *args, **kwargs)
+            if recorder is not None:
+                await recorder.after(next(iter(action.model_dump(exclude_unset=True)), "action"), browser_session)
+            return res
 
     return GuardedTools(exclude_actions=list(EXCLUDED_ACTIONS))
 
@@ -341,7 +420,7 @@ def profile_dir(cfg: Config) -> Path:
 
 
 def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
-          input_fn=input) -> FetchResult:
+          input_fn=input, record: bool = False) -> FetchResult:
     os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
     try:
         import asyncio
@@ -355,7 +434,8 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
     result = FetchResult()
     log_dir = new_log_dir(cfg, qt)
     result.log_dir = log_dir
-    tools = guarded_tools(bu, result.blocked, audit=log_dir / "guard.jsonl")
+    recorder = Recorder(log_dir) if record else None
+    tools = guarded_tools(bu, result.blocked, audit=log_dir / "guard.jsonl", recorder=recorder)
 
     @tools.action("Pause until the human has logged in manually (password/OTP/captcha).",
                   allowed_domains=ALLOWED_DOMAINS)

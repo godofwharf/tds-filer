@@ -144,7 +144,7 @@ def cmd_fetch(args) -> None:
     if bad:
         raise TdsError(f"--what: unknown {sorted(bad)}; choose from {','.join(portal.WHAT)}")
     _header(f"fetch {','.join(what)} for {qt.key} -> {qdir} (browser; you log in manually)")
-    res = portal.fetch(cfg, qt, qdir, what, args.model)
+    res = portal.fetch(cfg, qt, qdir, what, args.model, record=args.mode == "record")
     print(f"  new files: {', '.join(res.new_files) or 'none'}")
     for b in res.blocked:
         print(f"  SAFETY GUARD blocked: {b}")
@@ -264,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="pydantic-ai model 'provider:name' (default: GitHub Copilot; token asked once and stored in "
                         "~/.config/tds-filer/copilot_token; e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
     f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")
+    f.add_argument("--mode", choices=("agent", "record"), default="agent",
+                   help="agent: LLM drives the browser; record: same, plus capture selectors/page outlines/XHR "
+                        "endpoints into the run log (for building the scripted workflow)")
     f.add_argument("--forget-token", action="store_true", help="delete the stored Copilot token (asks again)")
     fr = sub.add_parser("fetch-report", help="summarise a logged `tds fetch` run (default: latest)")
     fr.add_argument("path", nargs="?", help="run dir or history.json")

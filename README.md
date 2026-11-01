@@ -133,6 +133,9 @@ uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: 
   Every decision is logged to `guard.jsonl` in the run log. Upload and e-verify the zip yourself.
 - Downloads go into the quarter folder; `extract` runs on them, and a fetched RRR is recorded only after you
   confirm (or with `-y`); an existing different RRR is never overwritten.
+- `--mode record` additionally saves, per action, the clicked element (tag, attributes, XPath), a DOM outline of the
+  page (tags/ids/roles/CSS paths/visible text) and the XHR/fetch endpoints the page called (URL + timing, no bodies) to
+  `record/` in the run log. Used to build the scripted workflow.
 - Every run is logged to `<filing root>/.fetch-logs/<TY>-Q<n>-<timestamp>/` (0700): `steps.md` (per-step goals,
   actions, errors, timings + aggregates), `history.json` (browser-use), `conversation/` (full model input/output per
   step), `llm_calls.jsonl` (latency, tokens, validation errors) and `screenshots/` (moved out of `$TMPDIR`).
