@@ -142,7 +142,7 @@ def cmd_fetch(args) -> None:
     if bad:
         raise TdsError(f"--what: unknown {sorted(bad)}; choose from {','.join(portal.WHAT)}")
     _header(f"fetch {','.join(what)} for {qt.key} -> {qdir} (browser; you log in manually)")
-    res = portal.fetch(cfg, qt, qdir, what, args.llm, args.model)
+    res = portal.fetch(cfg, qt, qdir, what, args.model)
     if "challans" in what:
         cmd_extract(args)
     if "csi" in what:
@@ -235,8 +235,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-fvu", action="store_true", help="stop after checks")
     f = q("fetch", cmd_fetch, "download challans/CSI/previous RRR from the portal (needs [portal] extra)")
     f.add_argument("--what", default=",".join(("challans", "csi", "rrr")), help="comma list: challans,csi,rrr")
-    f.add_argument("--llm", default="anthropic", choices=("anthropic", "openai"))
-    f.add_argument("--model")
+    f.add_argument("--model", default="github-copilot:gpt-4.1",
+                   help="pydantic-ai model 'provider:name' (default uses GitHub Copilot via `gh auth token`; "
+                        "e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
     f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")
     rr = q("record-rrr", cmd_record_rrr, "save the 15-digit RRR/token after upload")
     rr.add_argument("rrr")

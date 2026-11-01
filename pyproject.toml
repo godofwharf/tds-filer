@@ -6,7 +6,10 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-portal = ["browser-use>=0.13"]
+portal = [
+    "browser-use>=0.13",
+    "pydantic-ai-slim[anthropic,openai]>=2.64.0",
+]
 
 [project.scripts]
 tds = "tds_filer.cli:main"

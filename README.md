@@ -110,7 +110,11 @@ npx skills remove tds-filing -g
    ```
 ### Optional: fetch inputs from the portal (`tds fetch`)
 Steps 1–2 and the previous quarter's RRR can be collected by a [browser-use](https://github.com/browser-use/browser-use)
-agent. Install the optional extra and Chromium, and set `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` with `--llm openai`):
+agent. The model is called through [pydantic-ai](https://ai.pydantic.dev), so any pydantic-ai provider works via
+`--model provider:name`. The default, `github-copilot:gpt-4.1`, uses your GitHub Copilot subscription with the token
+from `gh auth token` (or `GITHUB_COPILOT_API_KEY`); no Anthropic/OpenAI key needed. Others: `anthropic:…`
+(`ANTHROPIC_API_KEY`), `openai:…` (`OPENAI_API_KEY`), `ollama:…` (local). Which Copilot model ids work depends on your
+plan and token (`gh`'s token got `model_not_supported` for Claude ids in testing).
 ```sh
 uv sync --extra portal && uvx browser-use install
 uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: all)
@@ -121,7 +125,7 @@ uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: 
   passed as a masked secret. The agent is told to only view and download, never submit, pay, upload or e-verify.
 - Downloads go into the quarter folder; `extract` runs on them, and a fetched RRR is recorded only after you
   confirm (or with `-y`); an existing different RRR is never overwritten.
-- Telemetry is disabled (`ANONYMIZED_TELEMETRY=false`). Page text is sent to your LLM provider.
+- Telemetry is disabled (`ANONYMIZED_TELEMETRY=false`). Page text is sent to your model provider (Copilot by default).
 
 `uv run tds status` shows progress per quarter. Each step can also be run on its own (`tds check 2026-27 Q3`, etc.);
 `-v` also lists the checks that passed.

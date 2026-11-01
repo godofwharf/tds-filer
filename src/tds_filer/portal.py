@@ -54,14 +54,94 @@ def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
     steps.append("Finish with done, summarising which files you downloaded.")
     return RULES + "\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
 
+DEFAULT_MODEL = "github-copilot:gpt-4.1"
 
-def _llm(provider: str, model: str | None):
-    import browser_use as bu
-    if provider == "anthropic":
-        return bu.ChatAnthropic(model=model or "claude-sonnet-4-5")
-    if provider == "openai":
-        return bu.ChatOpenAI(model=model or "gpt-4.1")
-    raise TdsError(f"unknown LLM provider {provider!r}")
+
+def _text(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    return "\n".join(getattr(p, "text", "") for p in content if getattr(p, "text", None))
+
+
+def to_history(messages) -> tuple[list, str]:
+    """browser-use messages -> (pydantic-ai message history, last user prompt)."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, SystemPromptPart, TextPart, UserPromptPart
+    hist: list = []
+    pending: list = []
+    for msg in messages:
+        text = _text(msg.content)
+        if msg.role == "system":
+            pending.append(SystemPromptPart(content=text))
+        elif msg.role == "user":
+            pending.append(UserPromptPart(content=text))
+        else:
+            if pending:
+                hist.append(ModelRequest(parts=pending))
+                pending = []
+            hist.append(ModelResponse(parts=[TextPart(content=text or "(no text)")]))
+    if not pending or not isinstance(pending[-1], UserPromptPart):
+        raise TdsError("last message to the model must be a user message")
+    prompt = pending.pop().content
+    if pending:
+        hist.append(ModelRequest(parts=pending))
+    return hist, prompt
+
+
+def _copilot_token() -> str:
+    for var in ("GITHUB_COPILOT_API_KEY", "GITHUB_COPILOT_API_TOKEN", "COPILOT_GITHUB_TOKEN"):
+        if os.environ.get(var):
+            return os.environ[var]
+    import subprocess
+    try:
+        return subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise TdsError("no Copilot token: run `gh auth login` or set GITHUB_COPILOT_API_KEY") from e
+
+
+def make_model(spec: str):
+    """pydantic-ai model from 'provider:model' (e.g. github-copilot:claude-sonnet-5, anthropic:..., openai:...)."""
+    if spec.startswith("github-copilot:"):
+        from pydantic_ai.models.github_copilot import GitHubCopilotModel
+        from pydantic_ai.providers.github_copilot import GitHubCopilotProvider
+        return GitHubCopilotModel(spec.split(":", 1)[1], provider=GitHubCopilotProvider(api_key=_copilot_token()))
+    from pydantic_ai.models import infer_model
+    return infer_model(spec)
+
+
+class PydanticAIChat:
+    """browser-use BaseChatModel backed by pydantic-ai, so any pydantic-ai provider can drive the browser."""
+
+    _verified_api_keys = True
+
+    def __init__(self, spec: str, model=None):
+        self.model = spec
+        self._model = model if model is not None else make_model(spec)
+
+    @property
+    def provider(self) -> str:
+        return self.model.split(":", 1)[0]
+
+    @property
+    def name(self) -> str:
+        return self.model
+
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    async def ainvoke(self, messages, output_format=None, **kwargs):
+        from browser_use.llm.exceptions import ModelProviderError
+        from browser_use.llm.views import ChatInvokeCompletion
+        from pydantic_ai import Agent
+        hist, prompt = to_history(messages)
+        agent = Agent(self._model, output_type=output_format or str)
+        try:
+            res = await agent.run(prompt, message_history=hist or None)
+        except Exception as e:  # noqa: BLE001 - surface to browser-use's retry logic
+            raise ModelProviderError(str(e), model=self.model) from e
+        return ChatInvokeCompletion(completion=res.output, usage=None)
 
 
 def profile_dir(cfg: Config) -> Path:
@@ -71,7 +151,7 @@ def profile_dir(cfg: Config) -> Path:
     return d
 
 
-def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], provider: str, model: str | None,
+def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
           input_fn=input) -> FetchResult:
     os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
     try:
@@ -111,7 +191,7 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], provider: str, 
     )
     agent = bu.Agent(
         task=build_task(cfg, qt, what),
-        llm=_llm(provider, model),
+        llm=PydanticAIChat(model),
         tools=tools,
         browser=browser,
         use_vision=False,

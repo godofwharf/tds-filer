@@ -253,6 +253,31 @@ class PortalTest(unittest.TestCase):
         from tds_filer import cli
         self.assertEqual(cli.main(["--config", str(self.cfg.path), "fetch", "2026-27", "Q2", "--what", "tracess"]), 1)
 
+    def test_pydantic_adapter(self):
+        try:
+            import browser_use  # noqa: F401
+            import pydantic_ai  # noqa: F401
+        except ImportError:
+            self.skipTest("portal extra not installed")
+        import asyncio
+        from pydantic import BaseModel
+        from pydantic_ai.models.test import TestModel
+        from browser_use.llm.messages import AssistantMessage, ContentPartTextParam, SystemMessage, UserMessage
+        from tds_filer import portal
+
+        class Out(BaseModel):
+            n: int
+
+        msgs = [SystemMessage(content="sys"), UserMessage(content="a"), AssistantMessage(content="b"),
+                UserMessage(content=[ContentPartTextParam(text="c")])]
+        hist, prompt = portal.to_history(msgs)
+        self.assertEqual(prompt, "c")
+        self.assertEqual([type(m).__name__ for m in hist], ["ModelRequest", "ModelResponse"])
+        llm = portal.PydanticAIChat("test:x", model=TestModel())
+        self.assertIsInstance(asyncio.run(llm.ainvoke(msgs, Out)).completion, Out)
+        with self.assertRaises(TdsError):
+            portal.to_history(msgs[:3])
+
 
 if __name__ == "__main__":
     unittest.main()
