@@ -175,7 +175,15 @@ class Driver:
             if not await self.page.evaluate(JS_CLICK, f"{mark}-{nth}"):
                 raise StepError(f"element {mark}-{nth} vanished")
         else:
-            await (await self._element(mark, nth)).click()
+            try:
+                await (await self._element(mark, nth)).click()
+            except StepError:
+                raise
+            except Exception as e:  # noqa: BLE001 - CDP node detached mid-click (Angular re-render)
+                self._log({"action": "click_retry_js", "label": f"{sel} {found[nth]}", "error": str(e)[:200]})
+                mark, found2 = await self.wait_for(sel, text, scope, timeout=5)
+                if nth >= len(found2) or not await self.page.evaluate(JS_CLICK, f"{mark}-{nth}"):
+                    raise StepError(f"click failed ({e}) and element is gone") from e
         return found[nth]
 
     async def fill(self, sel: str, value: str, timeout: float = 30) -> None:
@@ -250,8 +258,8 @@ async def open_menu(d: Driver, *labels: str) -> None:
             for label in labels:
                 await d.click(SEL["menuitem"], menu_regex(label), timeout=8, how=how)
             return
-        except StepError as e:
-            err = e
+        except Exception as e:  # noqa: BLE001 - any click/CDP failure -> next strategy
+            err = e if isinstance(e, StepError) else StepError(f"{type(e).__name__}: {e}")
             _, items = await d.find(SEL["menuitem"])
             d._log({"action": "menu_retry", "how": how, "error": str(e), "visible_menuitems": items[:20]})
             await d.page.press("Escape")
