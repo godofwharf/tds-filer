@@ -124,7 +124,13 @@ uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: 
 - A visible Chrome window opens with a dedicated profile (`<filing root>/.browser-profile`, 0700). **You log in
   yourself** (password/OTP/captcha); the CLI waits for Enter. The session is reused next time.
 - The browser is limited to `*.incometax.gov.in`; the LLM gets page text only (no screenshots), and the TAN is
-  passed as a masked secret. The agent is told to only view and download, never submit, pay, upload or e-verify.
+  passed as a masked secret.
+- **Uploading, filing, paying, signing and e-verifying are blocked in code**, not just by the prompt
+  (`portal.guarded_tools`): browser-use's `upload_file`, `evaluate` (arbitrary JS) and `search` actions are removed,
+  so no local file can be put into a page; every click/type/select is checked against the target element's label
+  (e.g. Upload, Submit, e-Verify, File Income Tax Forms, New Payment, Proceed, Pay Now, Attach/Browse, DSC/EVC) and
+  file inputs, and navigation to upload/e-verify/payment URLs is refused. After 3 blocked actions the run stops.
+  Every decision is logged to `guard.jsonl` in the run log. Upload and e-verify the zip yourself.
 - Downloads go into the quarter folder; `extract` runs on them, and a fetched RRR is recorded only after you
   confirm (or with `-y`); an existing different RRR is never overwritten.
 - Every run is logged to `<filing root>/.fetch-logs/<TY>-Q<n>-<timestamp>/` (0700): `steps.md` (per-step goals,

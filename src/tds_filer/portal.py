@@ -34,6 +34,7 @@ class FetchResult:
     rrr: dict[str, str] = field(default_factory=dict)
     log_dir: Path | None = None
     new_files: list[str] = field(default_factory=list)
+    blocked: list[str] = field(default_factory=list)
 
 
 def validate_rrr(rrr: str) -> str:
@@ -66,6 +67,110 @@ def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
             f"(the RRR is what matters).")
     steps.append("Finish with done: list each downloaded file, the RRR reported, and anything you could not get.")
     return RULES + "\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
+
+# --- Safety guard (enforced in code, not by the prompt) ---------------------------------------------------------
+# The agent may only view and download. These actions can put a local file into a page or run arbitrary JS / leave
+# the portal, so they are removed from the agent entirely.
+EXCLUDED_ACTIONS = ["upload_file", "evaluate", "search"]
+# Element labels the agent may never click/type into/select (upload, filing, e-verification, payment, signing).
+DENY_TEXT = re.compile(
+    r"upload|\bsubmit|e-?\s?verif|everif|file\s+income\s+tax\s+form|\bfile\s+(?:now|form|return)\b|"
+    r"pay\s*now|proceed\s+to\s+pay|make\s+payment|payment\s+gateway|net\s*banking|new\s+payment|create\s+challan|"
+    r"\bproceed\b|\battach|\bbrowse\b|choose\s+file|select\s+file|\bdsc\b|digital\s+signature|\bsign\b|"
+    r"generate\s+evc|aadhaar\s+otp|declaration|\bi\s+agree\b",
+    re.I)
+# Portal pages the agent may never be on (filing/upload, e-verify, payment creation).
+DENY_URL = re.compile(
+    r"upload|e-?verif|everif|payment-?gateway|new-?payment|create-?challan|netbanking|"
+    r"/pay(?:ment)?/(?:proceed|confirm)", re.I)
+ELEMENT_ACTIONS = {"click", "input", "select_dropdown", "dropdown_options", "send_keys"}
+SAFE_ON_DENIED_PAGE = {"go_back", "wait", "done", "close", "navigate"}
+MAX_BLOCKS = 3
+
+
+def element_label(node) -> str:
+    """Text a human would associate with a DOM element (tag, key attributes, accessible name, inner text)."""
+    if node is None:
+        return ""
+    attrs = getattr(node, "attributes", None) or {}
+    parts = [getattr(node, "tag_name", "") or ""]
+    parts += [f"{k}={attrs[k]}" for k in ("type", "id", "name", "aria-label", "title", "value", "formcontrolname",
+                                          "href", "for", "accept") if attrs.get(k)]
+    ax = getattr(node, "ax_node", None)
+    if ax is not None and getattr(ax, "name", None):
+        parts.append(ax.name)
+    try:
+        parts.append(node.get_all_children_text()[:200])
+    except Exception:  # noqa: BLE001
+        pass
+    return " ".join(parts)
+
+
+def check_action(name: str, params: dict | None, label: str = "", page_url: str = "",
+                 is_file_input: bool = False) -> str | None:
+    """Return a reason if the action must be blocked, else None. Fail closed."""
+    params = params or {}
+    if name in EXCLUDED_ACTIONS:
+        return f"action '{name}' is disabled"
+    if page_url and DENY_URL.search(page_url) and name not in SAFE_ON_DENIED_PAGE:
+        return f"current page is a filing/upload/e-verify/payment page ({page_url.split('?')[0]})"
+    if name == "navigate" and DENY_URL.search(str(params.get("url", ""))):
+        return f"navigation to {params.get('url')} is blocked"
+    if name in ELEMENT_ACTIONS and params.get("index") is not None:
+        if is_file_input:
+            return "file inputs are blocked"
+        m = DENY_TEXT.search(label)
+        if m:
+            return f"element '{label[:80]}' matches blocked term '{m.group(0)}'"
+    if name == "send_keys" and params.get("index") is None and page_url and DENY_URL.search(page_url):
+        return "keys on a blocked page"
+    return None
+
+
+def guarded_tools(bu, blocked: list[str], audit: Path | None = None):
+    """bu.Tools subclass that checks every action against check_action() before browser-use executes it."""
+
+    class GuardedTools(bu.Tools):
+        async def act(self, action, browser_session, *args, **kwargs):
+            for name, params in action.model_dump(exclude_unset=True).items():
+                if params is None:
+                    continue
+                params = params if isinstance(params, dict) else {}
+                label, url, is_file = "", "", False
+                try:
+                    url = await browser_session.get_current_page_url()
+                except Exception:  # noqa: BLE001
+                    url = ""
+                if name in ELEMENT_ACTIONS and params.get("index") is not None:
+                    node = await browser_session.get_element_by_index(params["index"])
+                    if node is None:
+                        reason = f"element {params['index']} not found (cannot verify it is safe)"
+                    else:
+                        label = element_label(node)
+                        attrs = getattr(node, "attributes", None) or {}
+                        is_file = (getattr(node, "tag_name", "") == "input" and attrs.get("type", "").lower() == "file")
+                        reason = check_action(name, params, label, url, is_file)
+                else:
+                    reason = check_action(name, params, label, url)
+                if audit is not None:
+                    import json
+                    import time
+                    fd = os.open(audit, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                    with os.fdopen(fd, "a") as fh:
+                        fh.write(json.dumps({"ts": time.time(), "action": name, "params": params, "url": url,
+                                             "label": label[:300], "blocked": reason}, default=str) + "\n")
+                if reason:
+                    blocked.append(f"{name}: {reason}")
+                    if len(blocked) >= MAX_BLOCKS:
+                        return bu.ActionResult(is_done=True, success=False, extracted_content=(
+                            f"Stopped by tds-filer safety guard after {len(blocked)} blocked actions."))
+                    return bu.ActionResult(error=(
+                        f"BLOCKED by tds-filer safety guard: {reason}. Uploading, filing, paying, signing and "
+                        f"e-verifying are disabled in code; only view and download."))
+            return await super().act(action, browser_session, *args, **kwargs)
+
+    return GuardedTools(exclude_actions=list(EXCLUDED_ACTIONS))
+
 
 OUTPUT_RETRIES = 3
 DEFAULT_MODEL = "github-copilot:claude-sonnet-5.5"
@@ -246,7 +351,9 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
     qdir.mkdir(parents=True, exist_ok=True)
     qdir.chmod(0o700)
     result = FetchResult()
-    tools = bu.Tools()
+    log_dir = new_log_dir(cfg, qt)
+    result.log_dir = log_dir
+    tools = guarded_tools(bu, result.blocked, audit=log_dir / "guard.jsonl")
 
     @tools.action("Pause until the human has logged in manually (password/OTP/captcha).",
                   allowed_domains=ALLOWED_DOMAINS)
@@ -262,8 +369,6 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
             return bu.ActionResult(error=str(e))
         return bu.ActionResult(extracted_content="RRR recorded.")
 
-    log_dir = new_log_dir(cfg, qt)
-    result.log_dir = log_dir
     llm = PydanticAIChat(model, transcript=log_dir / "llm_calls.jsonl")
     preflight(llm)
     browser = bu.Browser(

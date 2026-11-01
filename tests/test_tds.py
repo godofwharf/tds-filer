@@ -295,6 +295,30 @@ class PortalTest(unittest.TestCase):
         self.assertIn("- 2  https://x.incometax.gov.in/a", md)
         self.assertIn("ERROR: boom", md)
 
+    def test_guard_blocks_upload_filing_payment(self):
+        from tds_filer import portal
+        ok = ["a menuitem expand_more e-File", "button menuitem e-Pay Tax", "div tab Payment History",
+              "button more_vert Example icon-button", "button menuitem Download",
+              "div tab Challan Status Inquiry (CSI) File", "button Download Challan File",
+              "button menuitem Income Tax Forms", "button menuitem View Filed Forms", "span View All",
+              "button Download Receipt", "button No", "button Continue", "input id=fromDate 01-Jul-2026",
+              "div Income-tax Act, 2025"]
+        for label in ok:
+            self.assertIsNone(portal.check_action("click", {"index": 1}, label, "https://eportal.incometax.gov.in/iec/foservices/#/dashboard"), label)
+        bad = ["button menuitem File Income Tax Forms", "button Upload", "button Submit", "a menuitem e-Verify",
+               "button + New Payment", "button Proceed", "button Pay Now", "button Proceed to Pay",
+               "label Attach Zip", "button Browse", "span Choose File", "button Sign with DSC",
+               "button Generate EVC", "input type=checkbox I agree to the declaration"]
+        for label in bad:
+            self.assertIsNotNone(portal.check_action("click", {"index": 1}, label, ""), label)
+        self.assertIsNotNone(portal.check_action("click", {"index": 1}, "input", "", is_file_input=True))
+        for a in ("upload_file", "evaluate", "search"):
+            self.assertIsNotNone(portal.check_action(a, {}))
+        self.assertIsNotNone(portal.check_action("navigate", {"url": "https://eportal.incometax.gov.in/#/e-verify"}))
+        self.assertIsNone(portal.check_action("navigate", {"url": "https://eportal.incometax.gov.in/#/dashboard"}))
+        self.assertIsNotNone(portal.check_action("click", {"index": 1}, "button Download", "https://x.incometax.gov.in/#/upload-form"))
+        self.assertIsNone(portal.check_action("go_back", {}, "", "https://x.incometax.gov.in/#/upload-form"))
+
     def test_pydantic_adapter(self):
         try:
             import browser_use  # noqa: F401

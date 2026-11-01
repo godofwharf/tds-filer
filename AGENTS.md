@@ -44,7 +44,8 @@ against the user's real folder unless they ask; it overwrites `144RQn.txt` and m
   synthetic values. `.gitignore` blocks filing artifacts; don't weaken it.
 - **Standard library only** (Python >= 3.11). No runtime dependencies. Exception: `portal.py` may use the
   optional `[portal]` extra (browser-use + pydantic-ai-slim; `PydanticAIChat` adapts pydantic-ai models to browser-use), imported lazily inside functions; nothing else may import it.
-- Portal automation must never log in, submit, pay, upload or e-verify; keep `use_vision=False`,
+- Portal automation must never log in, submit, pay, upload or e-verify. This is enforced by `portal.guarded_tools`
+  (excluded actions + `check_action` deny lists); never weaken it, and add a test for any new allow/deny label; keep `use_vision=False`,
   `allowed_domains`, the masked TAN, and telemetry off. Tests mock `portal.fetch`; never hit the real portal.
 - **Field numbers are 1-based**, matching the spec xlsx. In code: `f[n - 1]` / `_rec(kind, {n: value})`.
   Record lengths: FH 18, BH 72, CD 30, DD 45 (`builder.COUNTS`); `checks` takes the authoritative counts from

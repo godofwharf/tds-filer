@@ -146,6 +146,8 @@ def cmd_fetch(args) -> None:
     _header(f"fetch {','.join(what)} for {qt.key} -> {qdir} (browser; you log in manually)")
     res = portal.fetch(cfg, qt, qdir, what, args.model)
     print(f"  new files: {', '.join(res.new_files) or 'none'}")
+    for b in res.blocked:
+        print(f"  SAFETY GUARD blocked: {b}")
     if "challans" in what:
         if not any("ChallanReceipt" in f for f in res.new_files):
             print("  WARNING: no new challan receipts downloaded; checking what is already in the folder")
