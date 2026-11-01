@@ -234,9 +234,10 @@ class PortalTest(unittest.TestCase):
 
     def _fetch(self, rrr, *extra):
         from unittest import mock
-        from tds_filer import cli, portal
+        from tds_filer import cli, portal, portal_script
         res = portal.FetchResult(rrr={"2026-27/Q1": rrr} if rrr else {})
-        with mock.patch.object(portal, "fetch", return_value=res) as m:
+        with mock.patch.object(portal_script, "fetch", return_value=res) as m, \
+                mock.patch.object(portal, "fetch", side_effect=AssertionError("agent mode used")):
             rc = cli.main(["--config", str(self.cfg.path), "fetch", "2026-27", "Q2", "--what", "rrr", *extra])
         return rc, m
 

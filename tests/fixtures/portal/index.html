@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- Synthetic stand-in for the income-tax portal, mirroring selectors recorded in Nov 2026. No real data. -->
+<html><head><meta charset="utf-8"><title>Dashboard, Income Tax Portal</title>
+<style>.hidden{display:none} [role=menu]{border:1px solid #888;padding:4px} .modal{border:2px solid #333;padding:8px}</style>
+</head><body>
+<div id="nav">
+  <div role="link" class="focusBox" onclick="go('#/dashboard')">Dashboard</div>
+  <a id="e-File" role="menuitem" href="javascript:void(0)" onclick="toggle('m-efile')">expand_more e-File</a>
+  <div id="m-efile" role="menu" class="hidden">
+    <button role="menuitem" onclick="toggle('m-forms')">Income Tax Forms</button>
+    <button role="menuitem" onclick="go('#/tin/e-pay-tax/e-pay-tax-dashboard')">e-Pay Tax</button>
+    <div id="m-forms" role="menu" class="hidden">
+      <button role="menuitem" onclick="alert('blocked page')">File Income Tax Forms</button>
+      <button role="menuitem" onclick="go('#/dashboard/statForms/viewFiledForms')">View Filed Forms</button>
+    </div>
+  </div>
+</div>
+<div id="app"></div>
+<script>
+const Q = new URLSearchParams(location.search);
+const SLOW_FORMS = Q.get('slowforms') === '1';
+let fromEpay = false;
+function toggle(id){ document.getElementById(id).classList.toggle('hidden'); }
+function closeMenus(){ for (const m of document.querySelectorAll('[role=menu]')) m.classList.add('hidden'); }
+function go(h){ closeMenus(); if (location.hash.includes('e-pay-tax') && h.includes('viewFiledForms')) fromEpay = true; if (h === '#/dashboard') fromEpay = false; location.hash = h; }
+function dl(name){ const a = document.createElement('a'); a.href = '/dl/' + name; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+const ROWS = [
+  ['11110100000001SBIN','01-Oct-2026'], ['11110100000002SBIN','01-Sep-2026'], ['11110100000003SBIN','01-Aug-2026'],
+  ['11110100000004SBIN','01-Jul-2026'], ['11110100000005SBIN','01-Jun-2026'], ['11110100000006SBIN','01-May-2026'],
+  ['11110100000007SBIN','01-Apr-2026']];
+const PER = Number(Q.get('per') || 5);
+let page = 0, actChosen = false;
+function render(){
+  const h = location.hash, app = document.getElementById('app');
+  if (h.includes('viewFiledForms')) {
+    if (SLOW_FORMS && fromEpay) { app.innerHTML = '<div>Income-tax Forms</div>'; return; }
+    app.innerHTML = `
+      <mat-card class="eachMatCardStyle" style="display:block">Quarterly statement of collection of tax at source 2 T.Y. 2026-27 <span class="hyperLink" onclick="alert('tcs')">View All</span></mat-card>
+      <mat-card class="eachMatCardStyle" style="display:block">Quarterly statement of deduction of tax under section 397(3)(b) in respect of payments other than salary 2 T.Y. 2026-27 <span class="hyperLink" onclick="showFiled()">View All</span></mat-card>`;
+  } else if (h.includes('e-pay-tax')) {
+    if (!actChosen) {
+      app.innerHTML = `<mat-radio-group role="radiogroup">
+        <mat-radio-button id="r25" style="display:block"><label>Income-tax Act, 2025 TDS/TCS payments for Tax Year 2026-27 and onwards.</label></mat-radio-button>
+        <mat-radio-button id="r61" style="display:block"><label>Income-tax Act, 1961 TDS/TCS payments for Assessment Year 2026-27 or earlier AYs.</label></mat-radio-button></mat-radio-group>
+        <button type="button" onclick="actChosen=true;render()">Continue</button>`;
+      return;
+    }
+    app.innerHTML = `<div role="tab" onclick="showHist()">Payment History</div><div role="tab" onclick="showCsi()">Challan Status Inquiry (CSI) File</div>
+      <button role="menuitem" onclick="alert('x')">+ New Payment</button><div id="tabbody"></div>`;
+  } else {
+    app.innerHTML = '<h1>Dashboard</h1>';
+  }
+}
+function showFiled(){
+  document.getElementById('app').innerHTML = `<h1>Quarterly statement of deduction of tax ...</h1>
+    <mat-card class="subCard" style="display:block">T.Y.2026-27 (Q2) View Details Filing Date 31-Oct-2026 Accepted <button onclick="rrr('111111111111111')">Download Receipt</button></mat-card>
+    <mat-card class="subCard" style="display:block">T.Y.2026-27 (Q1) View Details Filing Date 19-Jul-2026 Accepted <button onclick="rrr('123456789012345')">Download Receipt</button></mat-card>
+    <div id="rrrNumDownloadModel" role="dialog" class="modal hidden"><div class="modal-body">Download Receipt × RRR Number <span id="rrrv"></span></div>
+      <div class="modal-footer"><button class="defaultButton tertiaryButton" onclick="this.closest('.modal').classList.add('hidden')">Cancel</button>
+      <button class="defaultButton primaryButton" onclick="dl('ACK_' + document.getElementById('rrrv').textContent + '.pdf')">Download</button></div></div>`;
+}
+function rrr(v){ document.getElementById('rrrv').textContent = v; document.getElementById('rrrNumDownloadModel').classList.remove('hidden'); }
+function showHist(){
+  const rows = ROWS.slice(page*PER, page*PER+PER).map((r,i) => `<div role="row" class="ag-row">
+      <div role="gridcell">${r[0]}</div><div role="gridcell">REF${i}</div><div role="gridcell">2026-27</div>
+      <div role="gridcell">TDS/TCS Payable by Taxpayer(200)</div><div role="gridcell">31200</div><div role="gridcell">${r[1]} 10:00:00</div>
+      <div role="gridcell"><button aria-label="Example icon-button with a menu" onclick="rowMenu(this,'${r[0]}')">more_vert</button></div></div>`).join('');
+  document.getElementById('tabbody').innerHTML = `<div class="ag-center-cols-container">${rows}</div>
+    <div class="pager"><button class="buttonPag" onclick="page=0;showHist()">|&lt;</button><button class="buttonPag" onclick="page=Math.max(0,page-1);showHist()">&lt;</button>
+    <button class="buttonPag" onclick="page=page+1;showHist()">&gt;</button><button class="buttonPag" onclick="page=1;showHist()">&gt;|</button></div><div id="rowmenu"></div>`;
+}
+function rowMenu(btn, cin){
+  document.getElementById('rowmenu').innerHTML = `<div role="menu"><button role="menuitem" onclick="dl('${cin}_ChallanReceipt.pdf');this.parentNode.remove()">Download</button><button role="menuitem">View Details</button></div>`;
+}
+function showCsi(){
+  document.getElementById('tabbody').innerHTML = `<input id="fromcsipayment" formcontrolname="csiFileFromDate"><input id="topayment" formcontrolname="csiFileToDate">
+    <button type="button" onclick="dl('ABCD12345E' + '011126.csi')">Download Challan File</button><div id="csidates"></div>`;
+}
+window.addEventListener('hashchange', render);
+if (!location.hash) location.hash = '#/dashboard'; render();
+</script></body></html>

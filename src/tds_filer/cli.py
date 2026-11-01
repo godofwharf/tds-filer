@@ -144,7 +144,14 @@ def cmd_fetch(args) -> None:
     if bad:
         raise TdsError(f"--what: unknown {sorted(bad)}; choose from {','.join(portal.WHAT)}")
     _header(f"fetch {','.join(what)} for {qt.key} -> {qdir} (browser; you log in manually)")
-    res = portal.fetch(cfg, qt, qdir, what, args.model, record=args.mode == "record")
+    if args.mode == "script":
+        from . import portal_script
+        res = portal_script.fetch(cfg, qt, qdir, what, args.model, fallback=not args.no_fallback)
+        for st in res.steps:
+            status = "ok" if st.ok else "FAILED"
+            print(f"  step {st.name:9} {status:6} via {st.via:6} {st.seconds:6.1f}s  {st.error if not st.ok or st.via == 'agent' else ''}")
+    else:
+        res = portal.fetch(cfg, qt, qdir, what, args.model, record=args.mode == "record")
     print(f"  new files: {', '.join(res.new_files) or 'none'}")
     for b in res.blocked:
         print(f"  SAFETY GUARD blocked: {b}")
@@ -264,9 +271,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="pydantic-ai model 'provider:name' (default: GitHub Copilot; token asked once and stored in "
                         "~/.config/tds-filer/copilot_token; e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
     f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")
-    f.add_argument("--mode", choices=("agent", "record"), default="agent",
-                   help="agent: LLM drives the browser; record: same, plus capture selectors/page outlines/XHR "
-                        "endpoints into the run log (for building the scripted workflow)")
+    f.add_argument("--mode", choices=("script", "agent", "record"), default="script",
+                   help="script (default): deterministic steps, LLM agent only as per-step fallback; agent: LLM drives "
+                        "the whole flow; record: agent + capture selectors/page outlines/XHR endpoints")
+    f.add_argument("--no-fallback", action="store_true", help="script mode: never use the LLM")
     f.add_argument("--forget-token", action="store_true", help="delete the stored Copilot token (asks again)")
     fr = sub.add_parser("fetch-report", help="summarise a logged `tds fetch` run (default: latest)")
     fr.add_argument("path", nargs="?", help="run dir or history.json")

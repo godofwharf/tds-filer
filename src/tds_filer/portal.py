@@ -37,6 +37,7 @@ class FetchResult:
     log_dir: Path | None = None
     new_files: list[str] = field(default_factory=list)
     blocked: list[str] = field(default_factory=list)
+    steps: list = field(default_factory=list)
 
 
 def validate_rrr(rrr: str) -> str:

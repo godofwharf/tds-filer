@@ -121,6 +121,12 @@ plan and token (a `gh` CLI token got `model_not_supported` for Claude ids in tes
 uv sync --extra portal && uvx browser-use install
 uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: all)
 ```
+- **Modes** (`--mode`): `script` (default) drives the portal with fixed selectors, no LLM calls when it works.
+  Each step (rrr, challans, csi) is checked afterwards (RRR found, a challan for every month of the quarter,
+  a fresh `<TAN>*.csi`); if a step fails, a guarded browser-use agent is started **for that step only**
+  (`--no-fallback` disables it). `agent` runs the whole task with the LLM agent; `record` is agent mode that also
+  records selectors (see below). Scripted clicks go through the same safety guard as the agent and are logged to
+  `guard.jsonl` with `source: script`.
 - A visible Chrome window opens with a dedicated profile (`<filing root>/.browser-profile`, 0700). **You log in
   yourself** (password/OTP/captcha); the CLI waits for Enter. The session is reused next time.
 - The browser is limited to `*.incometax.gov.in`; the LLM gets page text only (no screenshots), and the TAN is

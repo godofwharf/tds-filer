@@ -21,6 +21,7 @@ src/tds_filer/
   fvu.py        integrity check (permissions + sha256 pins), headless FVU run, .err/stats parsing
   package.py    zip containing only the .fvu
   portal.py     optional [portal] extra: browser-use agent driven by pydantic-ai for `tds fetch` (lazy import; manual login); run logs in <filing root>/.fetch-logs
+  portal_script.py  default `tds fetch --mode script`: selector-driven steps (browser-use Actor API) + per-step checks; guarded agent fallback per failed step
   tds_config.example.json   synthetic example (packaged; used by `tds init`)
 skills/tds-filing/          agent skill + scripts/tds wrapper (uvx from git)
 tests/test_tds.py           unittest, synthetic data only
@@ -46,7 +47,10 @@ against the user's real folder unless they ask; it overwrites `144RQn.txt` and m
   optional `[portal]` extra (browser-use + pydantic-ai-slim; `PydanticAIChat` adapts pydantic-ai models to browser-use), imported lazily inside functions; nothing else may import it.
 - Portal automation must never log in, submit, pay, upload or e-verify. This is enforced by `portal.guarded_tools`
   (excluded actions + `check_action` deny lists); never weaken it, and add a test for any new allow/deny label; keep `use_vision=False`,
-  `allowed_domains`, the masked TAN, and telemetry off. Tests mock `portal.fetch`; never hit the real portal.
+  `allowed_domains`, the masked TAN, and telemetry off. Every scripted click/fill in `portal_script.Driver`
+  also goes through `check_action`. Tests mock `portal_script.fetch`/`portal.fetch`; never hit the real portal.
+  Scripted steps are tested against the synthetic fixture `tests/fixtures/portal/index.html`
+  (`TDS_LIVE=1`, headless Chromium); update it when portal selectors change.
 - **Field numbers are 1-based**, matching the spec xlsx. In code: `f[n - 1]` / `_rec(kind, {n: value})`.
   Record lengths: FH 18, BH 72, CD 30, DD 45 (`builder.COUNTS`); `checks` takes the authoritative counts from
   the spec.
