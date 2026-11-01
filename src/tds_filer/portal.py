@@ -24,6 +24,8 @@ RULES = """Rules (mandatory):
 - After login, move only by clicking menus/tabs/buttons. Never navigate by typing a URL: it triggers a logout popup.
 - Portal pages load slowly. If a page/list is still loading after a click, use ONE wait of 10 seconds, then re-check.
   If it is still not rendered after two such waits, re-open it once via the menu.
+- The portal's modules (Dashboard, e-Pay Tax, Income Tax Forms) do not render when you jump directly between them.
+  Before opening a different e-File section, click the 'Dashboard' link in the top bar and wait for it to load.
 - A download is confirmed only when the file appears in your available files list. Do not click the same download
   button more than twice; if no file appears, note it and move on.
 """
@@ -47,9 +49,16 @@ def validate_rrr(rrr: str) -> str:
 def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
     prev = qt.previous()
     steps = [f"Open {PORTAL}. Call wait_for_manual_login and wait until the user is logged in as TAN x_tan."]
+    if "rrr" in what:
+        steps.append(
+            f"From the Dashboard, open e-File -> Income Tax Forms -> View Filed Forms. On the Form 144 (or 27Q) card click 'View All'. "
+            f"Find the filing for T.Y. {prev.fy}, Quarter Q{prev.q} (check both on the card). Click its 'Download "
+            f"Receipt': the dialog shows the 15-digit RRR/token. Immediately call report_rrr with it. Then click the "
+            f"dialog's Download once to save the acknowledgement PDF; if no file appears after one 10 s wait, move on "
+            f"(the RRR is what matters).")
     if "challans" in what:
         steps.append(
-            f"Go to e-File -> e-Pay Tax (select the Act if asked, Continue) -> Payment History tab. Rows are sorted by "
+            f"Click 'Dashboard', then go to e-File -> e-Pay Tax (select the Act if asked, Continue) -> Payment History tab. Rows are sorted by "
             f"deposit date, newest first, and paginated. Download the challan receipt (row menu -> Download) for every "
             f"row with deposit date from {qt.start:%d-%b-%Y} to {qt.end:%d-%b-%Y}. Go to the next page until you see a "
             f"row dated before {qt.start:%d-%b-%Y} (then stop; older pages cannot contain in-range rows). "
@@ -58,13 +67,6 @@ def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
         steps.append(
             f"In e-Pay Tax, open the 'Challan Status Inquiry (CSI) File' tab, set From {qt.start:%d-%b-%Y} and To "
             f"{qt.end:%d-%b-%Y}, click 'Download Challan File', and confirm a .csi file appears.")
-    if "rrr" in what:
-        steps.append(
-            f"Open e-File -> Income Tax Forms -> View Filed Forms. On the Form 144 (or 27Q) card click 'View All'. "
-            f"Find the filing for T.Y. {prev.fy}, Quarter Q{prev.q} (check both on the card). Click its 'Download "
-            f"Receipt': the dialog shows the 15-digit RRR/token. Immediately call report_rrr with it. Then click the "
-            f"dialog's Download once to save the acknowledgement PDF; if no file appears after one 10 s wait, move on "
-            f"(the RRR is what matters).")
     steps.append("Finish with done: list each downloaded file, the RRR reported, and anything you could not get.")
     return RULES + "\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
 
@@ -324,7 +326,7 @@ class PydanticAIChat:
         from pydantic_ai.messages import RetryPromptPart
         retries = [str(p.content)[:500] for m in res.new_messages() for p in getattr(m, "parts", [])
                    if isinstance(p, RetryPromptPart)]
-        u = res.usage()
+        u = res.usage() if callable(res.usage) else res.usage
         out = res.output.model_dump() if hasattr(res.output, "model_dump") else res.output
         self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "output": out, "retries": retries, "requests": getattr(u, "requests", None),
                    "input_tokens": getattr(u, "input_tokens", None), "output_tokens": getattr(u, "output_tokens", None)})
@@ -392,7 +394,8 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
         file_system_path=str(log_dir / "agent_fs"),
     )
     print(f"  logging this run to {log_dir}")
-    before = {p.name for p in qdir.iterdir()}
+    import time
+    t_start = time.time()
     hist = None
     try:
         hist = asyncio.run(agent.run(max_steps=60))
@@ -401,7 +404,7 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
             hist = getattr(agent, "history", None)
         if hist is not None:
             save_run_log(hist, log_dir)
-        result.new_files = sorted(p.name for p in qdir.iterdir() if p.name not in before)
+        result.new_files = sorted(p.name for p in qdir.iterdir() if p.is_file() and p.stat().st_mtime >= t_start - 1)
     if not hist.is_done():
         errs = [e for e in hist.errors() if e]
         raise TdsError("portal agent did not finish" + (f": {errs[-1][:300]}" if errs else ""))
