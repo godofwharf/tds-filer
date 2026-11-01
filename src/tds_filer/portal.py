@@ -208,6 +208,8 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
             return bu.ActionResult(error=str(e))
         return bu.ActionResult(extracted_content="RRR recorded.")
 
+    llm = PydanticAIChat(model)
+    preflight(llm)
     browser = bu.Browser(
         user_data_dir=str(profile_dir(cfg)),
         allowed_domains=ALLOWED_DOMAINS,
@@ -219,11 +221,33 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
     )
     agent = bu.Agent(
         task=build_task(cfg, qt, what),
-        llm=PydanticAIChat(model),
+        llm=llm,
         tools=tools,
         browser=browser,
         use_vision=False,
         sensitive_data={"x_tan": cfg.deductor["tan"]},
     )
-    asyncio.run(agent.run(max_steps=60))
+    hist = asyncio.run(agent.run(max_steps=60))
+    if not hist.is_done():
+        errs = [e for e in hist.errors() if e]
+        raise TdsError("portal agent did not finish" + (f": {errs[-1][:300]}" if errs else ""))
     return result
+
+
+def preflight(llm) -> None:
+    """One tiny model call before opening the browser, so auth/model problems fail fast."""
+    import asyncio
+    from browser_use.llm.messages import UserMessage
+    try:
+        asyncio.run(llm.ainvoke([UserMessage(content="Reply with OK.")]))
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        hint = ""
+        if "Personal Access Tokens are not supported" in msg:
+            hint = (" -- Copilot needs an OAuth user token (gho_...), not a PAT. "
+                    "Re-run with --forget-token and paste an OAuth token.")
+        elif "model_not_supported" in msg:
+            hint = " -- your Copilot plan/token does not offer this model; pick another with --model."
+        elif "401" in msg or "unauthorized" in msg.lower():
+            hint = " -- token rejected; re-run with --forget-token."
+        raise TdsError(f"model check failed for {getattr(llm, 'model', llm)}: {msg[:300]}{hint}") from e
