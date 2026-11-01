@@ -51,59 +51,21 @@ Personal data lives **only** in the config and quarter folders, outside this rep
 Its `scripts/tds` wrapper runs the CLI through `uvx` from this repo, so the agent doesn't need a local install.
 `AGENTS.md` covers working *on* the code.
 
-#### Option A: `npx skills` (installs straight from GitHub; recommended)
-The [`skills`](https://github.com/vercel-labs/skills) CLI (needs Node.js) fetches the skill from this
-repository and installs it for each agent:
+Install it with the [`skills`](https://github.com/vercel-labs/skills) CLI (needs Node.js), straight from GitHub:
 ```sh
-# see what the repo offers (nothing is installed)
-npx skills add godofwharf/tds-filer --list
-
-# install for your user, available in every project (Claude Code + OpenCode)
 npx skills add godofwharf/tds-filer --skill tds-filing -g -a claude-code -a opencode -y
-
-# or for the current project only (omit -g)
-npx skills add godofwharf/tds-filer --skill tds-filing -a claude-code -a opencode -y
 ```
-- **Where it goes:** the files are copied to `.agents/skills/tds-filing/` (read by OpenCode), and
-  Claude Code gets a symlink in `.claude/skills/`. With `-g` this is under `~/`.
-  Add `--copy` for real copies instead of symlinks.
-- **Private repo:** it uses your existing git credentials, then the GitHub CLI (`gh`), then SSH.
-  You can also give the source as `git@github.com:godofwharf/tds-filer.git`.
-- **Project installs** write a `skills-lock.json` (source and content hash), which you can commit to that project.
-- **Telemetry:** the CLI sends anonymous usage telemetry. Prefix commands with `DO_NOT_TRACK=1` (or set
-  `DISABLE_TELEMETRY=1`) to turn it off.
-- **Manage it later:**
-  ```sh
-  npx skills list
-  npx skills check            # check for updates
-  npx skills update tds-filing
-  npx skills remove tds-filing -g
-  ```
+This makes the skill available in every project for Claude Code and OpenCode. Leave out `-g` to install it
+for the current project only. Private-repo access uses your existing git/`gh` credentials.
 
-#### Option B: from a git clone (manual symlinks)
+Update or remove it later:
 ```sh
-git clone https://github.com/godofwharf/tds-filer ~/Work/code/github/tds-filer   # update with git pull
+npx skills update tds-filing
+npx skills remove tds-filing -g
 ```
-**Claude Code** (personal skill, available in every project):
-```sh
-mkdir -p ~/.claude/skills
-ln -s ~/Work/code/github/tds-filer/skills/tds-filing ~/.claude/skills/tds-filing
-```
-For a single project instead, link it into `<project>/.claude/skills/tds-filing`.
 
-**OpenCode** (global skill):
-```sh
-mkdir -p ~/.config/opencode/skills
-ln -s ~/Work/code/github/tds-filer/skills/tds-filing ~/.config/opencode/skills/tds-filing
-```
-OpenCode also reads `~/.claude/skills/` and `~/.agents/skills/`, so the Claude Code link alone serves both
-tools. Per-project: `<project>/.opencode/skills/tds-filing`. Some older OpenCode releases only scanned the
-singular `~/.config/opencode/skill/`; if the skill doesn't show up, link it there too. Use `cp -R` instead of
-`ln -s` if you'd rather not track the repo.
-
-**Check it:** start the agent and ask "what skills do you have?", or "prepare my TDS filing for 2026-27 Q3".
-The skill runs the CLI with `uvx`, so you need uv (and the git access described above) on the same machine.
-
+**Check it:** start the agent and ask "prepare my TDS filing for 2026-27 Q3". The skill runs the CLI through
+`uvx`, so the machine needs uv and access to this repo.
 ## Quarterly workflow
 1. Pay TDS monthly (Challan 281) and save each `…SBIN_ChallanReceipt.pdf` into the filing root.
 2. After the quarter, download the CSI file from the portal into the quarter folder
