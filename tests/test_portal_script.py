@@ -37,6 +37,13 @@ class PortalScriptHelpersTest(unittest.TestCase):
         self.assertTrue(stop)
         self.assertFalse(ps.plan_page(rows[:2], self.qt)[1])
 
+    def test_menu_regex(self):
+        import re
+        rx = ps.menu_regex("Income Tax Forms")
+        self.assertTrue(re.search(rx, "Income Tax Forms chevron_right"))
+        self.assertTrue(re.search(rx, "Income Tax Forms"))
+        self.assertFalse(re.search(rx, "File Income Tax Forms"))
+
     def test_act_label(self):
         self.assertIn("2025", ps.act_label(self.qt))
         self.assertIn("1961", ps.act_label(Quarter(2025, 4)))

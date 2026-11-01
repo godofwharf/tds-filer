@@ -43,6 +43,16 @@ MARK_JS = """(sel, rx, scope, mark) => {
   return JSON.stringify(out);
 }"""
 
+JS_CLICK = """(m) => {
+  const e = document.querySelector('[data-tds="' + m + '"]');
+  if (!e) return false;
+  e.scrollIntoView({block: 'center'});
+  for (const t of ['pointerenter', 'mouseenter', 'mouseover', 'mousemove'])
+    e.dispatchEvent(new MouseEvent(t, {bubbles: t !== 'mouseenter' && t !== 'pointerenter'}));
+  e.click();
+  return true;
+}"""
+
 # Selectors recorded from the portal (Nov 2026).
 SEL = {
     "efile": "a#e-File",
@@ -156,12 +166,16 @@ class Driver:
             raise StepError(f"safety guard blocked {action}: {reason}")
 
     async def click(self, sel: str, text: str | None = None, scope: str | None = None, nth: int = 0,
-                    timeout: float = 30) -> str:
+                    timeout: float = 30, how: str = "actor") -> str:
         mark, found = await self.wait_for(sel, text, scope, timeout)
         if nth >= len(found):
             raise StepError(f"only {len(found)} match(es) for {sel} {text or ''}")
         await self._guard("click", f"{sel} {found[nth]}")
-        await (await self._element(mark, nth)).click()
+        if how == "js":
+            if not await self.page.evaluate(JS_CLICK, f"{mark}-{nth}"):
+                raise StepError(f"element {mark}-{nth} vanished")
+        else:
+            await (await self._element(mark, nth)).click()
         return found[nth]
 
     async def fill(self, sel: str, value: str, timeout: float = 30) -> None:
@@ -223,10 +237,26 @@ async def go_dashboard(d: Driver) -> None:
     await asyncio.sleep(1)
 
 
+def menu_regex(label: str) -> str:
+    return rf"^{re.escape(label)}(\s|$)"
+
+
 async def open_menu(d: Driver, *labels: str) -> None:
-    await d.click(SEL["efile"])
-    for label in labels:
-        await d.click(SEL["menuitem"], rf"^{re.escape(label)}$", timeout=15)
+    """Angular Material submenus sometimes ignore a synthetic click; retry with a JS hover+click."""
+    err = None
+    for how in ("actor", "js", "actor"):
+        try:
+            await d.click(SEL["efile"], how=how)
+            for label in labels:
+                await d.click(SEL["menuitem"], menu_regex(label), timeout=8, how=how)
+            return
+        except StepError as e:
+            err = e
+            _, items = await d.find(SEL["menuitem"])
+            d._log({"action": "menu_retry", "how": how, "error": str(e), "visible_menuitems": items[:20]})
+            await d.page.press("Escape")
+            await asyncio.sleep(1)
+    raise StepError(f"{err}; visible menu items: {items[:20]}")
 
 
 async def step_rrr(d: Driver, qt: Quarter, ctx: dict) -> dict:
@@ -418,7 +448,7 @@ async def _agent_step(bu, cfg, qt, name, ctx, browser, llm, blocked, log_dir) ->
         return bu.ActionResult(extracted_content="RRR recorded.")
 
     agent = bu.Agent(task=fallback_task(cfg, qt, name), llm=llm, tools=tools, browser=browser, use_vision=False,
-                     use_judge=False, sensitive_data={"x_tan": cfg.deductor["tan"]},
+                     use_judge=False, directly_open_url=False, sensitive_data={"x_tan": cfg.deductor["tan"]},
                      save_conversation_path=str(log_dir / f"conversation-{name}"))
     hist = await agent.run(max_steps=15)
     out = log_dir / f"agent-{name}"

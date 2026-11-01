@@ -85,6 +85,12 @@ class ScriptedPortalLiveTest(unittest.TestCase):
         _, ctx, _, _ = self.run_steps(query="?slowforms=1", what=("challans", "rrr"))
         self.assertEqual(ctx["rrr"]["2026-27/Q1"], "123456789012345")
 
+    def test_submenu_ignoring_clicks(self):
+        # portal quirk seen live: 'Income Tax Forms' submenu did not open on the scripted click -> JS hover+click retry
+        qdir, ctx, _, _ = self.run_steps(query="?hoveronly=1", what=("rrr",))
+        self.assertEqual(ctx["rrr"]["2026-27/Q1"], "123456789012345")
+        self.assertIn("menu_retry", (qdir / "guard.jsonl").read_text())
+
     def test_run_with_fallback(self):
         # run(): rrr via script; csi step broken -> agent fallback (faked) is used and the check re-run
         from unittest import mock

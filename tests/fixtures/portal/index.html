@@ -7,7 +7,7 @@
   <div role="link" class="focusBox" onclick="go('#/dashboard')">Dashboard</div>
   <a id="e-File" role="menuitem" href="javascript:void(0)" onclick="toggle('m-efile')">expand_more e-File</a>
   <div id="m-efile" role="menu" class="hidden">
-    <button role="menuitem" onclick="toggle('m-forms')">Income Tax Forms</button>
+    <button role="menuitem" id="t-forms" onclick="if(!HOVER_ONLY) toggle('m-forms')">Income Tax Forms <span class="mat-icon">chevron_right</span></button>
     <button role="menuitem" onclick="go('#/tin/e-pay-tax/e-pay-tax-dashboard')">e-Pay Tax</button>
     <div id="m-forms" role="menu" class="hidden">
       <button role="menuitem" onclick="alert('blocked page')">File Income Tax Forms</button>
@@ -19,6 +19,10 @@
 <script>
 const Q = new URLSearchParams(location.search);
 const SLOW_FORMS = Q.get('slowforms') === '1';
+const HOVER_ONLY = Q.get('hoveronly') === '1';  // submenu opens on mouseenter only (synthetic CDP click ignored)
+let hoverArmed = false;
+document.addEventListener('DOMContentLoaded', () => document.getElementById('t-forms').addEventListener('mouseenter',
+  () => { if (HOVER_ONLY && hoverArmed) document.getElementById('m-forms').classList.remove('hidden'); hoverArmed = true; }));
 let fromEpay = false;
 function toggle(id){ document.getElementById(id).classList.toggle('hidden'); }
 function closeMenus(){ for (const m of document.querySelectorAll('[role=menu]')) m.classList.add('hidden'); }
@@ -77,5 +81,6 @@ function showCsi(){
     <button type="button" onclick="dl('ABCD12345E' + '011126.csi')">Download Challan File</button><div id="csidates"></div>`;
 }
 window.addEventListener('hashchange', render);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
 if (!location.hash) location.hash = '#/dashboard'; render();
 </script></body></html>

@@ -406,7 +406,9 @@ class PydanticAIChat:
         from pydantic_ai.messages import RetryPromptPart
         retries = [str(p.content)[:500] for m in res.new_messages() for p in getattr(m, "parts", [])
                    if isinstance(p, RetryPromptPart)]
-        u = res.usage() if callable(res.usage) else res.usage
+        u = res.usage
+        if not hasattr(u, "input_tokens"):
+            u = u()
         out = res.output.model_dump() if hasattr(res.output, "model_dump") else res.output
         self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "output": out, "retries": retries, "requests": getattr(u, "requests", None),
                    "input_tokens": getattr(u, "input_tokens", None), "output_tokens": getattr(u, "output_tokens", None)})
