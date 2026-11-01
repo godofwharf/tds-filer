@@ -208,5 +208,51 @@ class SpecTest(unittest.TestCase):
         self.assertEqual(s.countries["15"], "AUSTRALIA")
 
 
+class PortalTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cfg = make_cfg(self.tmp)
+        self.qt = Quarter(2026, 2)
+
+    def test_validate_rrr(self):
+        from tds_filer import portal
+        self.assertEqual(portal.validate_rrr(" 123456789012345 "), "123456789012345")
+        for bad in ("12345", "12345678901234X", "1234567890123456"):
+            with self.assertRaises(TdsError):
+                portal.validate_rrr(bad)
+
+    def test_task_masks_tan_and_forbids_submit(self):
+        from tds_filer import portal
+        t = portal.build_task(self.cfg, self.qt, list(portal.WHAT))
+        self.assertNotIn(self.cfg.deductor["tan"], t)
+        self.assertIn("x_tan", t)
+        self.assertIn("Never click Submit", t)
+        self.assertIn("2026-27 quarter Q1", t)
+        self.assertNotIn("View Filed Forms", portal.build_task(self.cfg, self.qt, ["csi"]))
+
+    def _fetch(self, rrr, *extra):
+        from unittest import mock
+        from tds_filer import cli, portal
+        res = portal.FetchResult(rrr={"2026-27/Q1": rrr} if rrr else {})
+        with mock.patch.object(portal, "fetch", return_value=res) as m:
+            rc = cli.main(["--config", str(self.cfg.path), "fetch", "2026-27", "Q2", "--what", "rrr", *extra])
+        return rc, m
+
+    def test_fetch_records_rrr(self):
+        rc, m = self._fetch("123456789012345", "-y")
+        self.assertEqual(rc, 0)
+        self.assertEqual(m.call_args.args[3], ["rrr"])
+        self.assertEqual(Config.load(str(self.cfg.path)).rrr(Quarter(2026, 1)), "123456789012345")
+
+    def test_fetch_does_not_overwrite(self):
+        self.cfg.set_rrr(Quarter(2026, 1), "111111111111111")
+        self._fetch("123456789012345", "-y")
+        self.assertEqual(Config.load(str(self.cfg.path)).rrr(Quarter(2026, 1)), "111111111111111")
+
+    def test_fetch_bad_what(self):
+        from tds_filer import cli
+        self.assertEqual(cli.main(["--config", str(self.cfg.path), "fetch", "2026-27", "Q2", "--what", "tracess"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

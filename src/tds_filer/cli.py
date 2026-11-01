@@ -134,6 +134,36 @@ def cmd_record_rrr(args) -> None:
     print(f"Recorded RRR {args.rrr} for {qt.key}")
 
 
+def cmd_fetch(args) -> None:
+    from . import portal
+    cfg, qt, qdir = _ctx(args)
+    what = [w.strip() for w in args.what.split(",") if w.strip()]
+    bad = set(what) - set(portal.WHAT)
+    if bad:
+        raise TdsError(f"--what: unknown {sorted(bad)}; choose from {','.join(portal.WHAT)}")
+    _header(f"fetch {','.join(what)} for {qt.key} -> {qdir} (browser; you log in manually)")
+    res = portal.fetch(cfg, qt, qdir, what, args.llm, args.model)
+    if "challans" in what:
+        cmd_extract(args)
+    if "csi" in what:
+        try:
+            print(f"  CSI: {csi.find(qdir).name}")
+        except TdsError as e:
+            print(f"  WARNING: {e}")
+    for key, rrr in res.rrr.items():
+        prev = qt.previous()
+        old = cfg.rrr(prev)
+        if old == rrr:
+            print(f"  RRR for {key} already recorded: {rrr}")
+        elif old:
+            print(f"  WARNING: portal RRR {rrr} for {key} differs from recorded {old}; not changed")
+        elif args.yes or input(f"  Record RRR {rrr} for {key}? [y/N] ").strip().lower() == "y":
+            cfg.set_rrr(prev, rrr)
+            print(f"  Recorded RRR {rrr} for {key}")
+    if "rrr" in what and not res.rrr:
+        print("  WARNING: no RRR reported by the portal agent")
+
+
 def _checklist(cfg: Config, qt: Quarter, qdir: Path) -> None:
     today = date.today()
     days = (qt.due_date - today).days
@@ -203,6 +233,11 @@ def main(argv: list[str] | None = None) -> int:
     r = q("run", cmd_run, "extract -> build -> check -> validate -> package")
     r.add_argument("--date", help="file creation date DDMMYYYY (default today)")
     r.add_argument("--no-fvu", action="store_true", help="stop after checks")
+    f = q("fetch", cmd_fetch, "download challans/CSI/previous RRR from the portal (needs [portal] extra)")
+    f.add_argument("--what", default=",".join(("challans", "csi", "rrr")), help="comma list: challans,csi,rrr")
+    f.add_argument("--llm", default="anthropic", choices=("anthropic", "openai"))
+    f.add_argument("--model")
+    f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")
     rr = q("record-rrr", cmd_record_rrr, "save the 15-digit RRR/token after upload")
     rr.add_argument("rrr")
     rr.add_argument("--force", action="store_true")

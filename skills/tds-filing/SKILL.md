@@ -28,6 +28,9 @@ Run every step through the CLI wrapper `scripts/tds` (path relative to this file
    - the previous quarter's RRR recorded in the config (`tds status` shows the RRR column). If it's missing,
      ask the user for the 15-digit RRR from the previous upload acknowledgement and run
      `scripts/tds record-rrr <FY> Q<n-1> <RRR>`.
+   - Optional: if the `[portal]` extra is installed, `scripts/tds fetch <FY> Q<n>` opens a browser where the
+     **user logs in themselves** and an agent downloads challans, CSI and the previous RRR. Only run it when the
+     user asks; they must be at the keyboard to log in. It never uploads or e-verifies.
 4. **Run everything:** `scripts/tds run <FY> Q<n>` (e.g. `scripts/tds run 2026-27 Q3`).
    This runs extract → build → check → validate (FVU without its window, about 5 s) → package, and stops at
    the first failure. Add `-v` before the subcommand to see passing checks, or `--no-fvu` to stop after the checks.

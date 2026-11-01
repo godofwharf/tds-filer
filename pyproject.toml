@@ -5,6 +5,9 @@ description = "Prepare, validate and package quarterly Form 144 (ex-27Q) TDS sta
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+portal = ["browser-use>=0.13"]
+
 [project.scripts]
 tds = "tds_filer.cli:main"
 

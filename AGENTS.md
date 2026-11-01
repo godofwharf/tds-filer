@@ -11,7 +11,7 @@ is deliberately out of scope: there is no public API.
 ## Layout
 ```
 src/tds_filer/
-  cli.py        argparse entry point; subcommands init/status/extract/build/check/validate/package/run/record-rrr
+  cli.py        argparse entry point; subcommands init/status/extract/build/check/validate/package/run/record-rrr/fetch
   config.py     Config (JSON), Quarter (tax-year math, due dates, folder label), TdsError
   challan.py    challan receipt PDF -> text (osascript + PDFKit) -> Challan
   csi.py        CSI header parse (TAN, FVU versions it's stamped for)
@@ -20,6 +20,7 @@ src/tds_filer/
   checks.py     Report/Finding; challan, CSI, per-field spec, cross-record, previous-RRR and post-FVU checks
   fvu.py        integrity check (permissions + sha256 pins), headless FVU run, .err/stats parsing
   package.py    zip containing only the .fvu
+  portal.py     optional [portal] extra: browser-use agent for `tds fetch` (lazy import; manual login)
   tds_config.example.json   synthetic example (packaged; used by `tds init`)
 skills/tds-filing/          agent skill + scripts/tds wrapper (uvx from git)
 tests/test_tds.py           unittest, synthetic data only
@@ -41,7 +42,10 @@ against the user's real folder unless they ask; it overwrites `144RQn.txt` and m
   TDS 31200, country 15). Before every commit:
   `git grep -nP '\b[A-Z]{5}[0-9]{4}[A-Z]\b|\b[A-Z]{4}[0-9]{5}[A-Z]\b|\b[0-9]{15}\b'` must show only the
   synthetic values. `.gitignore` blocks filing artifacts; don't weaken it.
-- **Standard library only** (Python >= 3.11). No runtime dependencies.
+- **Standard library only** (Python >= 3.11). No runtime dependencies. Exception: `portal.py` may use the
+  optional `browser-use` extra, imported lazily inside functions; nothing else may import it.
+- Portal automation must never log in, submit, pay, upload or e-verify; keep `use_vision=False`,
+  `allowed_domains`, the masked TAN, and telemetry off. Tests mock `portal.fetch`; never hit the real portal.
 - **Field numbers are 1-based**, matching the spec xlsx. In code: `f[n - 1]` / `_rec(kind, {n: value})`.
   Record lengths: FH 18, BH 72, CD 30, DD 45 (`builder.COUNTS`); `checks` takes the authoritative counts from
   the spec.
