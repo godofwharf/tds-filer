@@ -279,6 +279,20 @@ class PortalTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {"GITHUB_COPILOT_INTEGRATION_ID": "custom"}):
             self.assertEqual(portal.copilot_integration_id("github_pat_x"), "custom")
 
+    def test_summarize_history(self):
+        from tds_filer import portal
+        data = {"history": [
+            {"model_output": {"evaluation_previous_goal": "ok", "next_goal": "go", "action": [{"navigate": {"url": "https://x.incometax.gov.in/a?b=1"}}]},
+             "result": [{}], "state": {"url": "https://x.incometax.gov.in/a?b=1"},
+             "metadata": {"step_number": 1, "step_start_time": 10.0, "step_end_time": 14.5}},
+            {"model_output": None, "result": [{"error": "boom"}], "state": {"url": "https://x.incometax.gov.in/a"},
+             "metadata": {"step_number": 2, "step_start_time": 15.0, "step_end_time": 16.0}}]}
+        md = portal.summarize_history(data)
+        self.assertIn("2 steps, 6s, 1 step(s) with errors", md)
+        self.assertIn("- navigate: 1", md)
+        self.assertIn("- 2  https://x.incometax.gov.in/a", md)
+        self.assertIn("ERROR: boom", md)
+
     def test_pydantic_adapter(self):
         try:
             import browser_use  # noqa: F401

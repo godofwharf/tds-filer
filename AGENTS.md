@@ -20,7 +20,7 @@ src/tds_filer/
   checks.py     Report/Finding; challan, CSI, per-field spec, cross-record, previous-RRR and post-FVU checks
   fvu.py        integrity check (permissions + sha256 pins), headless FVU run, .err/stats parsing
   package.py    zip containing only the .fvu
-  portal.py     optional [portal] extra: browser-use agent driven by pydantic-ai for `tds fetch` (lazy import; manual login)
+  portal.py     optional [portal] extra: browser-use agent driven by pydantic-ai for `tds fetch` (lazy import; manual login); run logs in <filing root>/.fetch-logs
   tds_config.example.json   synthetic example (packaged; used by `tds init`)
 skills/tds-filing/          agent skill + scripts/tds wrapper (uvx from git)
 tests/test_tds.py           unittest, synthetic data only

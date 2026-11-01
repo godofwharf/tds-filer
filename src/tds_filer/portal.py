@@ -27,6 +27,7 @@ RULES = """Rules (mandatory):
 @dataclass
 class FetchResult:
     rrr: dict[str, str] = field(default_factory=dict)
+    log_dir: Path | None = None
 
 
 def validate_rrr(rrr: str) -> str:
@@ -54,6 +55,7 @@ def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
     steps.append("Finish with done, summarising which files you downloaded.")
     return RULES + "\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
 
+OUTPUT_RETRIES = 3
 DEFAULT_MODEL = "github-copilot:claude-sonnet-5.5"
 
 
@@ -152,9 +154,10 @@ class PydanticAIChat:
 
     _verified_api_keys = True
 
-    def __init__(self, spec: str, model=None):
+    def __init__(self, spec: str, model=None, transcript: Path | None = None):
         self.model = spec
         self._model = model if model is not None else make_model(spec)
+        self.transcript = transcript
 
     @property
     def provider(self) -> str:
@@ -168,16 +171,35 @@ class PydanticAIChat:
     def model_name(self) -> str:
         return self.model
 
+    def _log(self, rec: dict) -> None:
+        if not self.transcript:
+            return
+        import json
+        fd = os.open(self.transcript, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+
     async def ainvoke(self, messages, output_format=None, **kwargs):
+        import time
         from browser_use.llm.exceptions import ModelProviderError
         from browser_use.llm.views import ChatInvokeCompletion
         from pydantic_ai import Agent
         hist, prompt = to_history(messages)
-        agent = Agent(self._model, output_type=output_format or str)
+        agent = Agent(self._model, output_type=output_format or str, retries=OUTPUT_RETRIES)
+        rec = {"ts": time.time(), "model": self.model, "output_format": getattr(output_format, "__name__", None),
+               "n_messages": len(messages), "input_chars": sum(len(_text(m.content)) for m in messages),
+               "last_message": _text(messages[-1].content)}
+        t0 = time.monotonic()
         try:
             res = await agent.run(prompt, message_history=hist or None)
         except Exception as e:  # noqa: BLE001 - surface to browser-use's retry logic
+            self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "error": str(e),
+                       "cause": repr(e.__cause__)[:2000] if e.__cause__ else None})
             raise ModelProviderError(str(e), model=self.model) from e
+        u = res.usage()
+        out = res.output.model_dump() if hasattr(res.output, "model_dump") else res.output
+        self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "output": out,
+                   "input_tokens": getattr(u, "input_tokens", None), "output_tokens": getattr(u, "output_tokens", None)})
         return ChatInvokeCompletion(completion=res.output, usage=None)
 
 
@@ -217,7 +239,9 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
             return bu.ActionResult(error=str(e))
         return bu.ActionResult(extracted_content="RRR recorded.")
 
-    llm = PydanticAIChat(model)
+    log_dir = new_log_dir(cfg, qt)
+    result.log_dir = log_dir
+    llm = PydanticAIChat(model, transcript=log_dir / "llm_calls.jsonl")
     preflight(llm)
     browser = bu.Browser(
         user_data_dir=str(profile_dir(cfg)),
@@ -235,12 +259,83 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
         browser=browser,
         use_vision=False,
         sensitive_data={"x_tan": cfg.deductor["tan"]},
+        save_conversation_path=str(log_dir / "conversation"),
+        file_system_path=str(log_dir / "agent_fs"),
     )
-    hist = asyncio.run(agent.run(max_steps=60))
+    print(f"  logging this run to {log_dir}")
+    hist = None
+    try:
+        hist = asyncio.run(agent.run(max_steps=60))
+    finally:
+        if hist is None:
+            hist = getattr(agent, "history", None)
+        if hist is not None:
+            save_run_log(hist, log_dir)
     if not hist.is_done():
         errs = [e for e in hist.errors() if e]
         raise TdsError("portal agent did not finish" + (f": {errs[-1][:300]}" if errs else ""))
     return result
+
+
+def new_log_dir(cfg: Config, qt: Quarter) -> Path:
+    from datetime import datetime
+    root = cfg.filing_root / ".fetch-logs"
+    d = root / f"{qt.fy}-Q{qt.q}-{datetime.now():%Y%m%d-%H%M%S}"
+    d.mkdir(parents=True, exist_ok=True)
+    for p in (root, d):
+        p.chmod(0o700)
+    return d
+
+
+def save_run_log(hist, log_dir: Path) -> None:
+    """history.json (browser-use format), steps.md (readable summary); screenshots moved out of $TMPDIR."""
+    import json
+    import shutil
+    shots = log_dir / "screenshots"
+    for p in hist.screenshot_paths():
+        if p and Path(p).exists():
+            shots.mkdir(exist_ok=True)
+            shutil.move(p, shots / Path(p).name)
+            src_root = Path(p).parent.parent
+            if src_root.name.startswith("browser_use_agent_"):
+                shutil.rmtree(src_root, ignore_errors=True)
+    hist.save_to_file(str(log_dir / "history.json"))
+    data = json.loads((log_dir / "history.json").read_text())
+    (log_dir / "steps.md").write_text(summarize_history(data))
+    for p in log_dir.rglob("*"):
+        p.chmod(0o700 if p.is_dir() else 0o600)
+
+
+def summarize_history(data: dict) -> str:
+    """Readable per-step table + aggregates from a browser-use history.json dict."""
+    from collections import Counter
+    steps = data.get("history", [])
+    lines, actions, urls, errors = [], Counter(), Counter(), 0
+    total = 0.0
+    for i, h in enumerate(steps, 1):
+        mo = h.get("model_output") or {}
+        md = h.get("metadata") or {}
+        st = h.get("state") or {}
+        dur = (md.get("step_end_time") or 0) - (md.get("step_start_time") or 0)
+        total += max(dur, 0)
+        acts = []
+        for a in mo.get("action") or []:
+            for name, params in a.items():
+                actions[name] += 1
+                acts.append(f"{name}({', '.join(f'{k}={str(v)[:40]}' for k, v in (params or {}).items())})")
+        url = (st.get("url") or "").split("?")[0]
+        urls[url] += 1
+        errs = [r.get("error") for r in h.get("result") or [] if r.get("error")]
+        errors += bool(errs)
+        lines.append(f"### Step {md.get('step_number', i)}  ({dur:.1f}s)  {url}\n"
+                     f"- eval: {mo.get('evaluation_previous_goal', '')}\n"
+                     f"- next: {mo.get('next_goal', '')}\n"
+                     f"- actions: {'; '.join(acts) or '-'}\n"
+                     + "".join(f"- ERROR: {e[:300]}\n" for e in errs))
+    head = [f"# browser-use run: {len(steps)} steps, {total:.0f}s, {errors} step(s) with errors", "",
+            "## Actions", *[f"- {n}: {c}" for n, c in actions.most_common()], "",
+            "## Steps per URL", *[f"- {c}  {u}" for u, c in urls.most_common()], "", "## Steps", ""]
+    return "\n".join(head + lines)
 
 
 def preflight(llm) -> None:

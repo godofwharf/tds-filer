@@ -127,6 +127,10 @@ uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: 
   passed as a masked secret. The agent is told to only view and download, never submit, pay, upload or e-verify.
 - Downloads go into the quarter folder; `extract` runs on them, and a fetched RRR is recorded only after you
   confirm (or with `-y`); an existing different RRR is never overwritten.
+- Every run is logged to `<filing root>/.fetch-logs/<TY>-Q<n>-<timestamp>/` (0700): `steps.md` (per-step goals,
+  actions, errors, timings + aggregates), `history.json` (browser-use), `conversation/` (full model input/output per
+  step), `llm_calls.jsonl` (latency, tokens, validation errors) and `screenshots/` (moved out of `$TMPDIR`).
+  These contain portal data; they never leave the filing root. `tds fetch-report [--full] [run]` summarises a run.
 - Telemetry is disabled (`ANONYMIZED_TELEMETRY=false`). Page text is sent to your model provider (Copilot by default).
 
 `uv run tds status` shows progress per quarter. Each step can also be run on its own (`tds check 2026-27 Q3`, etc.);

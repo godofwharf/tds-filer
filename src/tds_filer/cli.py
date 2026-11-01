@@ -164,6 +164,24 @@ def cmd_fetch(args) -> None:
             print(f"  Recorded RRR {rrr} for {key}")
     if "rrr" in what and not res.rrr:
         print("  WARNING: no RRR reported by the portal agent")
+    if res.log_dir:
+        print(f"  run log: {res.log_dir}/steps.md (tds fetch-report for a summary)")
+
+
+def cmd_fetch_report(args) -> None:
+    import json
+    from . import portal
+    cfg = Config.load(args.config)
+    if args.path:
+        d = Path(args.path).expanduser()
+    else:
+        runs = sorted((cfg.filing_root / ".fetch-logs").glob("*/history.json"))
+        if not runs:
+            raise TdsError("no fetch runs logged yet")
+        d = runs[-1].parent
+    h = d / "history.json" if d.is_dir() else d
+    text = portal.summarize_history(json.loads(h.read_text()))
+    print(f"{h}\n" + (text if args.full else text.split("\n## Steps\n")[0]))
 
 
 def _checklist(cfg: Config, qt: Quarter, qdir: Path) -> None:
@@ -242,6 +260,10 @@ def main(argv: list[str] | None = None) -> int:
                         "~/.config/tds-filer/copilot_token; e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
     f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")
     f.add_argument("--forget-token", action="store_true", help="delete the stored Copilot token (asks again)")
+    fr = sub.add_parser("fetch-report", help="summarise a logged `tds fetch` run (default: latest)")
+    fr.add_argument("path", nargs="?", help="run dir or history.json")
+    fr.add_argument("--full", action="store_true", help="include every step")
+    fr.set_defaults(fn=cmd_fetch_report)
     rr = q("record-rrr", cmd_record_rrr, "save the 15-digit RRR/token after upload")
     rr.add_argument("rrr")
     rr.add_argument("--force", action="store_true")
