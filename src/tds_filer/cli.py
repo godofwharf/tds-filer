@@ -149,7 +149,7 @@ def cmd_fetch(args) -> None:
         res = portal_script.fetch(cfg, qt, qdir, what, args.model, fallback=not args.no_fallback)
         for st in res.steps:
             status = "ok" if st.ok else "FAILED"
-            print(f"  step {st.name:9} {status:6} via {st.via:6} {st.seconds:6.1f}s  {st.error if not st.ok or st.via == 'agent' else ''}")
+            print(f"  step {st.name:9} {status:6} via {st.via:6} {st.seconds:6.1f}s  {st.error}")
     else:
         res = portal.fetch(cfg, qt, qdir, what, args.model, record=args.mode == "record")
     print(f"  new files: {', '.join(res.new_files) or 'none'}")

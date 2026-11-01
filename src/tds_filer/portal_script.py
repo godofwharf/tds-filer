@@ -66,6 +66,7 @@ SEL = {
     "rrr_dialog_buttons": "#rrrNumDownloadModel .modal-footer button",
     "act_radio": "mat-radio-button",
     "tab": "[role=tab]",
+    "menu_overlay": ".cdk-overlay-container",
     "grid_rows": "div.ag-center-cols-container [role=row]",
     "row_menu": "button[aria-label^='Example icon-button']",
     "pager": "button.buttonPag",
@@ -252,15 +253,15 @@ def menu_regex(label: str) -> str:
 async def open_menu(d: Driver, *labels: str) -> None:
     """Angular Material submenus sometimes ignore a synthetic click; retry with a JS hover+click."""
     err = None
-    for how in ("actor", "js", "actor"):
+    for how in ("js", "actor", "js"):
         try:
             await d.click(SEL["efile"], how=how)
             for label in labels:
-                await d.click(SEL["menuitem"], menu_regex(label), timeout=8, how=how)
+                await d.click(SEL["menuitem"], menu_regex(label), scope=SEL["menu_overlay"], timeout=6, how=how)
             return
         except Exception as e:  # noqa: BLE001 - any click/CDP failure -> next strategy
             err = e if isinstance(e, StepError) else StepError(f"{type(e).__name__}: {e}")
-            _, items = await d.find(SEL["menuitem"])
+            _, items = await d.find(SEL["menuitem"], scope=SEL["menu_overlay"])
             d._log({"action": "menu_retry", "how": how, "error": str(e), "visible_menuitems": items[:20]})
             await d.page.press("Escape")
             await asyncio.sleep(1)
@@ -287,8 +288,8 @@ async def step_rrr(d: Driver, qt: Quarter, ctx: dict) -> dict:
     since = time.time()
     ack = None
     try:
-        await d.click(SEL["rrr_dialog_buttons"], r"^Download$", timeout=5)
-        ack = await d.wait_download(r"\.pdf$", since, timeout=20)
+        await d.click(SEL["rrr_dialog_buttons"], r"^Download$", timeout=5, how="js")
+        ack = await d.wait_download(r"\.pdf$", since, timeout=8)
     except StepError:
         pass
     try:
@@ -299,20 +300,23 @@ async def step_rrr(d: Driver, qt: Quarter, ctx: dict) -> dict:
 
 
 async def open_epay(d: Driver, qt: Quarter) -> None:
-    await go_dashboard(d)
-    await open_menu(d, "e-Pay Tax")
-    end = time.monotonic() + 40
-    while time.monotonic() < end:
-        _, radios = await d.find(SEL["act_radio"], act_label(qt))
-        if radios:
-            await d.click(SEL["act_radio"], act_label(qt))
-            await d.click(SEL["button"], r"^Continue$")
-            break
-        _, tabs = await d.find(SEL["tab"], r"^Payment History$")
-        if tabs:
-            break
-        await asyncio.sleep(0.5)
-    await d.wait_for(SEL["tab"], r"^Payment History$", timeout=40)
+    for attempt in (1, 2):
+        await go_dashboard(d)
+        await open_menu(d, "e-Pay Tax")
+        end = time.monotonic() + 25
+        while time.monotonic() < end:
+            _, radios = await d.find(SEL["act_radio"], act_label(qt))
+            if radios:
+                await d.click(SEL["act_radio"], act_label(qt))
+                await d.click(SEL["button"], r"^Continue$")
+                await d.wait_for(SEL["tab"], r"^Payment History$", timeout=40)
+                return
+            _, tabs = await d.find(SEL["tab"], r"^Payment History$")
+            if tabs:
+                return
+            await asyncio.sleep(0.5)
+        d._log({"action": "epay_retry", "attempt": attempt, "url": await d.url()})
+    raise StepError(f"e-Pay Tax page did not open (url {await d.url()})")
 
 
 async def step_challans(d: Driver, qt: Quarter, ctx: dict) -> dict:

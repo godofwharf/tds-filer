@@ -6,6 +6,10 @@
 <div id="nav">
   <div role="link" class="focusBox" onclick="go('#/dashboard')">Dashboard</div>
   <a id="e-File" role="menuitem" href="javascript:void(0)" onclick="toggle('m-efile')">expand_more e-File</a>
+  <!-- decoy seen live: a same-named element outside the e-File menu that does not navigate -->
+  <button role="menuitem" class="quickLink">E-Pay Tax</button>
+</div>
+<div class="cdk-overlay-container">
   <div id="m-efile" role="menu" class="hidden">
     <button role="menuitem" id="t-forms" onclick="if(!HOVER_ONLY) toggle('m-forms')">Income Tax Forms <span class="mat-icon">chevron_right</span></button>
     <button role="menuitem" onclick="go('#/tin/e-pay-tax/e-pay-tax-dashboard')">e-Pay Tax</button>
