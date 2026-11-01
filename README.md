@@ -21,16 +21,13 @@ statements: its ERI APIs cover ITR filing only and require approval as an interm
 
 ### One-line install (dependencies + agent skill)
 ```sh
-curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
-  https://raw.githubusercontent.com/godofwharf/tds-filer/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/godofwharf/tds-filer/master/install.sh | bash
 ```
-The repository is private, so the request passes your GitHub CLI token. Once the repo is public, drop the `-H …` part.
-
 [`install.sh`](install.sh) does the following:
 - checks for macOS;
 - installs **uv** and **Node.js** if they're missing (with Homebrew if present);
 - checks for **Java**;
-- makes sure git can read this repo, running `gh auth setup-git` if needed;
+- checks that GitHub is reachable;
 - runs `uvx` once so the `tds` CLI is built and cached;
 - installs the **tds-filing** skill for Claude Code and OpenCode via `npx skills`.
 
@@ -58,9 +55,6 @@ To install it permanently so `tds` is on your PATH:
 uv tool install git+https://github.com/godofwharf/tds-filer
 uv tool upgrade tds-filer        # later
 ```
-The repository is private, so uv clones it with your git credentials. If you use the GitHub CLI, run
-`gh auth setup-git` once so `git` (and therefore uv) can authenticate over HTTPS. Alternatively, use
-`git+ssh://git@github.com/godofwharf/tds-filer`.
 
 From a checkout: `uv run tds …`.
 
@@ -83,7 +77,7 @@ Install it with the [`skills`](https://github.com/vercel-labs/skills) CLI (needs
 npx skills add godofwharf/tds-filer --skill tds-filing -g -a claude-code -a opencode -y
 ```
 This makes the skill available in every project for Claude Code and OpenCode. Leave out `-g` to install it
-for the current project only. Private-repo access uses your existing git/`gh` credentials.
+for the current project only.
 
 Update or remove it later:
 ```sh
@@ -92,7 +86,7 @@ npx skills remove tds-filing -g
 ```
 
 **Check it:** start the agent and ask "prepare my TDS filing for 2026-27 Q3". The skill runs the CLI through
-`uvx`, so the machine needs uv and access to this repo.
+`uvx`, so the machine needs uv.
 
 ## Quarterly workflow
 1. Pay TDS monthly (Challan 281) and save each `…SBIN_ChallanReceipt.pdf` into the filing root.

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # tds-filer installer: dependencies (uv, Node.js, Java check) + the tds-filing agent skill.
 #
-#   curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
-#     https://raw.githubusercontent.com/godofwharf/tds-filer/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/godofwharf/tds-filer/master/install.sh | bash
 #
 # Environment overrides:
 #   TDS_SKILL_SCOPE=global|project   where to install the skill (default: global)
@@ -50,15 +49,9 @@ else
 fi
 
 say "Checking access to $REPO"
-if git ls-remote "https://github.com/$REPO" HEAD >/dev/null 2>&1; then
-  ok "git can read the repository"
-elif have gh && gh auth status >/dev/null 2>&1; then
-  gh auth setup-git
-  git ls-remote "https://github.com/$REPO" HEAD >/dev/null 2>&1 || die "still cannot read $REPO; check repo access"
-  ok "configured git to use GitHub CLI credentials (gh auth setup-git)"
-else
-  die "cannot read $REPO. Run 'gh auth login' (or set up git credentials/SSH) and retry."
-fi
+git ls-remote "https://github.com/$REPO" HEAD >/dev/null 2>&1 \
+  || die "cannot reach https://github.com/$REPO (network/proxy?)"
+ok "repository reachable"
 
 say "Installing the tds CLI (cached by uvx)"
 uvx --refresh --from "git+https://github.com/$REPO@$REF" tds --help >/dev/null
