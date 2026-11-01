@@ -44,6 +44,31 @@ class PortalScriptHelpersTest(unittest.TestCase):
         self.assertTrue(re.search(rx, "Income Tax Forms"))
         self.assertFalse(re.search(rx, "File Income Tax Forms"))
 
+    def test_click_detached_node_falls_back_to_js(self):
+        import asyncio
+        evals = []
+
+        class El:
+            async def click(self):
+                raise RuntimeError("{'code': -32000, 'message': 'Could not find node with given id'}")
+
+        class Page:
+            async def get_url(self):
+                return "https://eportal.incometax.gov.in/iec/foservices/#/dashboard"
+
+            async def evaluate(self, js, *args):
+                evals.append(js)
+                return True if js == ps.JS_CLICK else '["Income Tax Forms"]'
+
+            async def get_elements_by_css_selector(self, sel):
+                return [El()]
+
+        with tempfile.TemporaryDirectory() as t:
+            d = ps.Driver(Page(), Path(t), Path(t) / "guard.jsonl", [])
+            asyncio.run(d.click(ps.SEL["menuitem"], ps.menu_regex("Income Tax Forms")))
+            self.assertIn(ps.JS_CLICK, evals)
+            self.assertIn("click_retry_js", (Path(t) / "guard.jsonl").read_text())
+
     def test_act_label(self):
         self.assertIn("2025", ps.act_label(self.qt))
         self.assertIn("1961", ps.act_label(Quarter(2025, 4)))
