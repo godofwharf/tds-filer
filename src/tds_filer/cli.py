@@ -237,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-fvu", action="store_true", help="stop after checks")
     f = q("fetch", cmd_fetch, "download challans/CSI/previous RRR from the portal (needs [portal] extra)")
     f.add_argument("--what", default=",".join(("challans", "csi", "rrr")), help="comma list: challans,csi,rrr")
-    f.add_argument("--model", default="github-copilot:gpt-4.1",
+    f.add_argument("--model", default="github-copilot:claude-sonnet-5.5",
                    help="pydantic-ai model 'provider:name' (default: GitHub Copilot; token asked once and stored in "
                         "~/.config/tds-filer/copilot_token; e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
     f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")

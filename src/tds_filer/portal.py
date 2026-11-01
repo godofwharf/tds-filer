@@ -54,7 +54,7 @@ def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
     steps.append("Finish with done, summarising which files you downloaded.")
     return RULES + "\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
 
-DEFAULT_MODEL = "github-copilot:gpt-4.1"
+DEFAULT_MODEL = "github-copilot:claude-sonnet-5.5"
 
 
 def _text(content) -> str:
