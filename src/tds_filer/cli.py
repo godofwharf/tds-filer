@@ -36,6 +36,7 @@ def cmd_init(args) -> None:
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(Path(__file__).resolve().parents[2] / "tds_config.example.json", dest)
+        dest.chmod(0o600)
         print(f"Wrote {dest} from example; edit deductor/deductee details before use.")
         return
     cfg = Config.load(str(dest))
@@ -47,6 +48,12 @@ def cmd_init(args) -> None:
     print(f"  [{'OK' if shutil.which('java') else 'MISSING':7}] java on PATH")
     if not ok:
         raise TdsError("Fix missing paths in config")
+    if not cfg.data["utility"].get("sha256"):
+        cfg.data["utility"]["sha256"] = fvu.pin_hashes(cfg)
+        cfg.save()
+        print(f"  pinned sha256 of {len(cfg.data['utility']['sha256'])} FVU jars in config")
+    fvu.verify_integrity(cfg)
+    print("  [OK     ] FVU files not group/world-writable; hashes match pins")
 
 
 def cmd_extract(args) -> list[challan.Challan]:

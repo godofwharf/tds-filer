@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -109,11 +110,17 @@ class Config:
         if not p.exists():
             raise TdsError(f"Config not found at {p}. Run `tds init` or copy tds_config.example.json there.")
         with p.open() as f:
-            return cls(p, json.load(f))
+            data = json.load(f)
+        if p.stat().st_mode & 0o077:
+            print(f"warning: {p} is readable by others (contains PAN/TAN); fixing to 0600", file=sys.stderr)
+            os.chmod(p, 0o600)
+        return cls(p, data)
 
     def save(self) -> None:
         tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self.data, indent=2) + "\n")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(self.data, indent=2) + "\n")
         tmp.replace(self.path)
 
     def _validate(self) -> None:

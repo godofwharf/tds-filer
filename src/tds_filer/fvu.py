@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 import shutil
@@ -32,6 +33,34 @@ def archive_previous(qdir: Path, qt: Quarter) -> Path | None:
     return dest
 
 
+def _sha256(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_integrity(cfg: Config) -> None:
+    """Everything on FVU's classpath runs as you: refuse if others can modify it, or if pinned hashes differ."""
+    jar_dir = cfg.fvu_dir
+    targets = [jar_dir, *jar_dir.glob("*.jar"), jar_dir / "e-mudhra.cer"]
+    loose = [p.name for p in targets if p.exists() and p.stat().st_mode & 0o022]
+    if loose:
+        raise TdsError(f"FVU files writable by group/others: {loose}. Fix: chmod -R go-w '{jar_dir}'")
+    pins: dict = cfg.data["utility"].get("sha256", {})
+    for name, want in pins.items():
+        p = jar_dir / name
+        if not p.exists() or _sha256(p) != want.lower():
+            raise TdsError(f"{name} does not match pinned sha256 in config; re-download FVU from Protean")
+    if not pins:
+        print("  note: no utility.sha256 pins in config; run `tds init` to record them")
+
+
+def pin_hashes(cfg: Config) -> dict[str, str]:
+    return {p.name: _sha256(p) for p in sorted(cfg.fvu_dir.glob("*.jar"))}
+
+
 def run(cfg: Config, qt: Quarter, qdir: Path, csi_path: Path, timeout: int = 600) -> None:
     jar_dir = cfg.fvu_dir
     jars = list(jar_dir.glob("TDS_STANDALONE_FVU_*.jar"))
@@ -41,6 +70,7 @@ def run(cfg: Config, qt: Quarter, qdir: Path, csi_path: Path, timeout: int = 600
         raise TdsError(f"{jar_dir}/e-mudhra.cer missing; re-extract the FVU zip")
     if shutil.which("java") is None:
         raise TdsError("java not found on PATH")
+    verify_integrity(cfg)
     s = qdir / qt.stem
     # FVU CLI: <input.txt> <error.err> <output.fvu> 0 <version> 0 <challan.csi>
     # Must run with cwd = FVU dir (loads e-mudhra.cer relatively). Not java.awt.headless: it builds a JFrame.
