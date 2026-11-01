@@ -270,6 +270,15 @@ class PortalTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {"GITHUB_COPILOT_API_KEY": "env"}):
             self.assertEqual(portal._copilot_token(f, ask=lambda p: self.fail("asked")), "env")
 
+    def test_copilot_integration_id(self):
+        from unittest import mock
+        from tds_filer import portal
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(portal.copilot_integration_id("github_pat_x"), "copilot-sdk")
+            self.assertIsNone(portal.copilot_integration_id("gho_x"))
+        with mock.patch.dict("os.environ", {"GITHUB_COPILOT_INTEGRATION_ID": "custom"}):
+            self.assertEqual(portal.copilot_integration_id("github_pat_x"), "custom")
+
     def test_pydantic_adapter(self):
         try:
             import browser_use  # noqa: F401

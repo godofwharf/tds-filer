@@ -107,7 +107,7 @@ def _copilot_token(token_file: Path | None = None, ask=None) -> str:
     if ask is None:
         import getpass
         ask = getpass.getpass
-    print("A GitHub Copilot OAuth token is needed (e.g. `gho_…` from a Copilot login). "
+    print("A GitHub Copilot token is needed: a fine-grained PAT (github_pat_…) with the Copilot Requests permission, or an OAuth token (gho_…). "
           f"It will be stored in {f} (mode 0600) and reused.")
     tok = ask("Copilot token (input hidden): ").strip()
     if not tok:
@@ -118,6 +118,13 @@ def _copilot_token(token_file: Path | None = None, ask=None) -> str:
     with os.fdopen(fd, "w") as fh:
         fh.write(tok + "\n")
     return tok
+
+
+def copilot_integration_id(token: str) -> str | None:
+    """Copilot rejects fine-grained PATs under pydantic-ai's default 'vscode-chat'; use the SDK id for them."""
+    if os.environ.get("GITHUB_COPILOT_INTEGRATION_ID"):
+        return os.environ["GITHUB_COPILOT_INTEGRATION_ID"]
+    return "copilot-sdk" if token.startswith("github_pat_") else None
 
 
 def forget_copilot_token(token_file: Path | None = None) -> bool:
@@ -133,7 +140,9 @@ def make_model(spec: str):
     if spec.startswith("github-copilot:"):
         from pydantic_ai.models.github_copilot import GitHubCopilotModel
         from pydantic_ai.providers.github_copilot import GitHubCopilotProvider
-        return GitHubCopilotModel(spec.split(":", 1)[1], provider=GitHubCopilotProvider(api_key=_copilot_token()))
+        tok = _copilot_token()
+        iid = copilot_integration_id(tok)
+        return GitHubCopilotModel(spec.split(":", 1)[1], provider=GitHubCopilotProvider(api_key=tok, integration_id=iid))
     from pydantic_ai.models import infer_model
     return infer_model(spec)
 
@@ -244,8 +253,9 @@ def preflight(llm) -> None:
         msg = str(e)
         hint = ""
         if "Personal Access Tokens are not supported" in msg:
-            hint = (" -- Copilot needs an OAuth user token (gho_...), not a PAT. "
-                    "Re-run with --forget-token and paste an OAuth token.")
+            hint = (" -- Copilot rejected the PAT under this integration id. Use a fine-grained PAT owned by your "
+                    "personal account with the 'Copilot Requests' permission (sent as 'copilot-sdk'), or set "
+                    "GITHUB_COPILOT_INTEGRATION_ID; --forget-token to re-enter.")
         elif "model_not_supported" in msg:
             hint = " -- your Copilot plan/token does not offer this model; pick another with --model."
         elif "401" in msg or "unauthorized" in msg.lower():
