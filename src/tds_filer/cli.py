@@ -35,7 +35,7 @@ def cmd_init(args) -> None:
         print(f"Config already exists: {dest}")
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(Path(__file__).resolve().parents[2] / "tds_config.example.json", dest)
+        shutil.copy(Path(__file__).with_name("tds_config.example.json"), dest)
         dest.chmod(0o600)
         print(f"Wrote {dest} from example; edit deductor/deductee details before use.")
         return

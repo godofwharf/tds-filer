@@ -33,7 +33,7 @@ Total (A+B+C+D+E+F+G) ₹ 31,200
 
 
 def make_cfg(tmp: Path, rrr=None) -> Config:
-    data = json.loads((ROOT / "tds_config.example.json").read_text())
+    data = json.loads((ROOT / "src" / "tds_filer" / "tds_config.example.json").read_text())
     data["filing_root"] = str(tmp)
     data["rrr"] = rrr or {}
     p = tmp / "cfg.json"

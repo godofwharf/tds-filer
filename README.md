@@ -13,17 +13,67 @@ statements: its ERI APIs cover ITR filing only and require approval as an interm
 
 ## Requirements
 - macOS (challan text is read with PDFKit via `osascript`), Python ≥ 3.11 (standard library only)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (`brew install uv`)
 - Java plus Protean's **TDS_STANDALONE_FVU_1.2** folder, and the Form 144 file format spreadsheet
   (`Form Number 144-27Q - Q1 to Q4_*.xlsx`), both from Protean's e-TDS download page
 
-## Setup
+## Installation
+
+### CLI
+`uvx` can run the CLI straight from the git repository, with no clone and no install:
 ```sh
-uv run tds init        # writes ~/Documents/TDS Filing/tds_config.json from the example
-# edit the config: deductor, deductee, rent, rate, codes, paths
-uv run tds init        # re-run to verify FVU/spec/java paths
+uvx --from git+https://github.com/godofwharf/tds-filer tds --help
+uvx --from git+https://github.com/godofwharf/tds-filer@v0.1.0 tds status    # pin a tag/branch/commit
+uvx --refresh --from git+https://github.com/godofwharf/tds-filer tds status # pick up new commits (uvx caches builds)
+```
+To install it permanently so `tds` is on your PATH:
+```sh
+uv tool install git+https://github.com/godofwharf/tds-filer
+uv tool upgrade tds-filer        # later
+```
+The repository is private, so uv clones it with your git credentials. If you use the GitHub CLI, run
+`gh auth setup-git` once so `git` (and therefore uv) can authenticate over HTTPS. Alternatively, use
+`git+ssh://git@github.com/godofwharf/tds-filer`.
+
+From a checkout: `uv run tds …`.
+
+### First-time configuration
+```sh
+tds init        # writes ~/Documents/TDS Filing/tds_config.json (mode 0600) from the example
+# edit the config: deductor, deductee, rent, rate, codes, FVU paths
+tds init        # re-run: checks paths/java, pins FVU jar sha256 hashes
 ```
 Personal data lives **only** in the config and quarter folders, outside this repo. Use `--config` or
 `$TDS_CONFIG` to point at a different config file.
+
+### Agent skill (Claude Code / OpenCode)
+`skills/tds-filing/` is an [Agent Skill](https://agentskills.io) that teaches an agent the quarterly workflow.
+Its `scripts/tds` wrapper runs the CLI through `uvx` from this repo, so the agent doesn't need a local install.
+`AGENTS.md` covers working *on* the code.
+
+Get the skill folder (a clone keeps it updatable with `git pull`):
+```sh
+git clone https://github.com/godofwharf/tds-filer ~/Work/code/github/tds-filer
+```
+
+**Claude Code** (personal skill, available in every project):
+```sh
+mkdir -p ~/.claude/skills
+ln -s ~/Work/code/github/tds-filer/skills/tds-filing ~/.claude/skills/tds-filing
+```
+For a single project instead, link it into `<project>/.claude/skills/tds-filing`.
+
+**OpenCode** (global skill):
+```sh
+mkdir -p ~/.config/opencode/skills
+ln -s ~/Work/code/github/tds-filer/skills/tds-filing ~/.config/opencode/skills/tds-filing
+```
+OpenCode also reads `~/.claude/skills/`, so the Claude Code link alone serves both tools. Per-project:
+`<project>/.opencode/skills/tds-filing`. Some older OpenCode releases only scanned the singular
+`~/.config/opencode/skill/`; if the skill doesn't show up, link it there too.
+
+Check it: start the agent and ask "what skills do you have?", or "prepare my TDS filing for 2026-27 Q3".
+Use `cp -R` instead of `ln -s` if you'd rather not track the repo.
 
 ## Quarterly workflow
 1. Pay TDS monthly (Challan 281) and save each `…SBIN_ChallanReceipt.pdf` into the filing root.

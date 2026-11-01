@@ -1,0 +1,10 @@
+#!/bin/sh
+# Run the tds-filer CLI without a local checkout.
+# Override the source with TDS_FILER_SRC (e.g. a local path or a pinned tag: git+https://github.com/godofwharf/tds-filer@v0.1.0).
+set -e
+SRC="${TDS_FILER_SRC:-git+https://github.com/godofwharf/tds-filer}"
+if ! command -v uvx >/dev/null 2>&1; then
+  echo "uvx not found. Install uv: https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 127
+fi
+exec uvx --from "$SRC" tds "$@"
