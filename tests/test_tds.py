@@ -227,7 +227,9 @@ class PortalTest(unittest.TestCase):
         self.assertNotIn(self.cfg.deductor["tan"], t)
         self.assertIn("x_tan", t)
         self.assertIn("Never click Submit", t)
-        self.assertIn("2026-27 quarter Q1", t)
+        self.assertIn("T.Y. 2026-27, Quarter Q1", t)
+        self.assertIn("before 01-Jul-2026", t)
+        self.assertIn("Never navigate by typing a URL", t)
         self.assertNotIn("View Filed Forms", portal.build_task(self.cfg, self.qt, ["csi"]))
 
     def _fetch(self, rrr, *extra):
@@ -313,7 +315,7 @@ class PortalTest(unittest.TestCase):
         hist, prompt = portal.to_history(msgs)
         self.assertEqual(prompt, "c")
         self.assertEqual([type(m).__name__ for m in hist], ["ModelRequest", "ModelResponse"])
-        llm = portal.PydanticAIChat("test:x", model=TestModel())
+        llm = portal.PydanticAIChat("test:x", model=TestModel(), output_mode="tool")
         self.assertIsInstance(asyncio.run(llm.ainvoke(msgs, Out)).completion, Out)
         with self.assertRaises(TdsError):
             portal.to_history(msgs[:3])

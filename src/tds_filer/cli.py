@@ -145,7 +145,10 @@ def cmd_fetch(args) -> None:
         raise TdsError(f"--what: unknown {sorted(bad)}; choose from {','.join(portal.WHAT)}")
     _header(f"fetch {','.join(what)} for {qt.key} -> {qdir} (browser; you log in manually)")
     res = portal.fetch(cfg, qt, qdir, what, args.model)
+    print(f"  new files: {', '.join(res.new_files) or 'none'}")
     if "challans" in what:
+        if not any("ChallanReceipt" in f for f in res.new_files):
+            print("  WARNING: no new challan receipts downloaded; checking what is already in the folder")
         cmd_extract(args)
     if "csi" in what:
         try:

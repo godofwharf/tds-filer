@@ -21,6 +21,11 @@ RULES = """Rules (mandatory):
 - Stay on incometax.gov.in. Never click Submit, Upload, Pay, Proceed to payment, E-verify, or anything that files or pays.
 - Only navigate, search, view and download.
 - When you reach the login page, call wait_for_manual_login and do not type credentials yourself.
+- After login, move only by clicking menus/tabs/buttons. Never navigate by typing a URL: it triggers a logout popup.
+- Portal pages load slowly. If a page/list is still loading after a click, use ONE wait of 10 seconds, then re-check.
+  If it is still not rendered after two such waits, re-open it once via the menu.
+- A download is confirmed only when the file appears in your available files list. Do not click the same download
+  button more than twice; if no file appears, note it and move on.
 """
 
 
@@ -28,6 +33,7 @@ RULES = """Rules (mandatory):
 class FetchResult:
     rrr: dict[str, str] = field(default_factory=dict)
     log_dir: Path | None = None
+    new_files: list[str] = field(default_factory=list)
 
 
 def validate_rrr(rrr: str) -> str:
@@ -42,17 +48,23 @@ def build_task(cfg: Config, qt: Quarter, what: list[str]) -> str:
     steps = [f"Open {PORTAL}. Call wait_for_manual_login and wait until the user is logged in as TAN x_tan."]
     if "challans" in what:
         steps.append(
-            f"Go to e-File -> e-Pay Tax -> Payment History. For every challan paid between {qt.start:%d-%b-%Y} and "
-            f"{qt.end:%d-%b-%Y} (deposit date), download the challan receipt PDF.")
+            f"Go to e-File -> e-Pay Tax (select the Act if asked, Continue) -> Payment History tab. Rows are sorted by "
+            f"deposit date, newest first, and paginated. Download the challan receipt (row menu -> Download) for every "
+            f"row with deposit date from {qt.start:%d-%b-%Y} to {qt.end:%d-%b-%Y}. Go to the next page until you see a "
+            f"row dated before {qt.start:%d-%b-%Y} (then stop; older pages cannot contain in-range rows). "
+            f"Expect about one challan per month ({len(qt.months)}).")
     if "csi" in what:
         steps.append(
-            f"Download the Challan Status Inquiry (CSI) file for TAN x_tan for the date range "
-            f"{qt.start:%d-%b-%Y} to {qt.end:%d-%b-%Y} (e-File -> e-Pay Tax / Services -> download CSI file).")
+            f"In e-Pay Tax, open the 'Challan Status Inquiry (CSI) File' tab, set From {qt.start:%d-%b-%Y} and To "
+            f"{qt.end:%d-%b-%Y}, click 'Download Challan File', and confirm a .csi file appears.")
     if "rrr" in what:
         steps.append(
-            f"Go to e-File -> Income Tax Forms -> View Filed Forms. Find Form 144 (or 27Q) for tax year {prev.fy} "
-            f"quarter Q{prev.q}. Download its acknowledgement PDF and call report_rrr with its 15-digit token/receipt number.")
-    steps.append("Finish with done, summarising which files you downloaded.")
+            f"Open e-File -> Income Tax Forms -> View Filed Forms. On the Form 144 (or 27Q) card click 'View All'. "
+            f"Find the filing for T.Y. {prev.fy}, Quarter Q{prev.q} (check both on the card). Click its 'Download "
+            f"Receipt': the dialog shows the 15-digit RRR/token. Immediately call report_rrr with it. Then click the "
+            f"dialog's Download once to save the acknowledgement PDF; if no file appears after one 10 s wait, move on "
+            f"(the RRR is what matters).")
+    steps.append("Finish with done: list each downloaded file, the RRR reported, and anything you could not get.")
     return RULES + "\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
 
 OUTPUT_RETRIES = 3
@@ -149,12 +161,20 @@ def make_model(spec: str):
     return infer_model(spec)
 
 
+def _wrap_output(output_format, mode: str):
+    if output_format is None:
+        return str
+    from pydantic_ai import NativeOutput, PromptedOutput, ToolOutput
+    return {"tool": ToolOutput, "native": NativeOutput, "prompted": PromptedOutput}[mode](output_format)
+
+
 class PydanticAIChat:
     """browser-use BaseChatModel backed by pydantic-ai, so any pydantic-ai provider can drive the browser."""
 
     _verified_api_keys = True
 
-    def __init__(self, spec: str, model=None, transcript: Path | None = None):
+    def __init__(self, spec: str, model=None, transcript: Path | None = None, output_mode: str = "prompted"):
+        self.output_mode = output_mode
         self.model = spec
         self._model = model if model is not None else make_model(spec)
         self.transcript = transcript
@@ -185,7 +205,7 @@ class PydanticAIChat:
         from browser_use.llm.views import ChatInvokeCompletion
         from pydantic_ai import Agent
         hist, prompt = to_history(messages)
-        agent = Agent(self._model, output_type=output_format or str, retries=OUTPUT_RETRIES)
+        agent = Agent(self._model, output_type=_wrap_output(output_format, self.output_mode), retries=OUTPUT_RETRIES)
         rec = {"ts": time.time(), "model": self.model, "output_format": getattr(output_format, "__name__", None),
                "n_messages": len(messages), "input_chars": sum(len(_text(m.content)) for m in messages),
                "last_message": _text(messages[-1].content)}
@@ -196,9 +216,12 @@ class PydanticAIChat:
             self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "error": str(e),
                        "cause": repr(e.__cause__)[:2000] if e.__cause__ else None})
             raise ModelProviderError(str(e), model=self.model) from e
+        from pydantic_ai.messages import RetryPromptPart
+        retries = [str(p.content)[:500] for m in res.new_messages() for p in getattr(m, "parts", [])
+                   if isinstance(p, RetryPromptPart)]
         u = res.usage()
         out = res.output.model_dump() if hasattr(res.output, "model_dump") else res.output
-        self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "output": out,
+        self._log({**rec, "seconds": round(time.monotonic() - t0, 2), "output": out, "retries": retries, "requests": getattr(u, "requests", None),
                    "input_tokens": getattr(u, "input_tokens", None), "output_tokens": getattr(u, "output_tokens", None)})
         return ChatInvokeCompletion(completion=res.output, usage=None)
 
@@ -259,10 +282,12 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
         browser=browser,
         use_vision=False,
         sensitive_data={"x_tan": cfg.deductor["tan"]},
+        use_judge=False,
         save_conversation_path=str(log_dir / "conversation"),
         file_system_path=str(log_dir / "agent_fs"),
     )
     print(f"  logging this run to {log_dir}")
+    before = {p.name for p in qdir.iterdir()}
     hist = None
     try:
         hist = asyncio.run(agent.run(max_steps=60))
@@ -271,6 +296,7 @@ def fetch(cfg: Config, qt: Quarter, qdir: Path, what: list[str], model: str,
             hist = getattr(agent, "history", None)
         if hist is not None:
             save_run_log(hist, log_dir)
+        result.new_files = sorted(p.name for p in qdir.iterdir() if p.name not in before)
     if not hist.is_done():
         errs = [e for e in hist.errors() if e]
         raise TdsError("portal agent did not finish" + (f": {errs[-1][:300]}" if errs else ""))
