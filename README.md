@@ -45,6 +45,7 @@ Options are passed as environment variables on the `bash` side of the pipe, e.g.
 | `TDS_AGENTS` | `claude-code opencode` | agents to install the skill for |
 | `TDS_REF` | `master` | branch, tag or commit of tds-filer to use |
 | `DO_NOT_TRACK` | unset | `1` turns off the `skills` CLI telemetry |
+
 ### CLI
 `uvx` can run the CLI straight from the git repository, with no clone and no install:
 ```sh
