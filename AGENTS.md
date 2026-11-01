@@ -39,7 +39,7 @@ against the user's real folder unless they ask; it overwrites `144RQn.txt` and m
 - **No personal data in the repo, ever:** no PAN/TAN, names, addresses, phone numbers, emails, challan/CIN/RRR
   numbers, or real rent/TDS figures. Tests and the example config use synthetic values (rent 100000,
   TDS 31200, country 15). Before every commit:
-  `git grep -nE '\b[A-Z]{5}[0-9]{4}[A-Z]\b|\b[A-Z]{4}[0-9]{5}[A-Z]\b|\b[0-9]{15}\b'` must show only the
+  `git grep -nP '\b[A-Z]{5}[0-9]{4}[A-Z]\b|\b[A-Z]{4}[0-9]{5}[A-Z]\b|\b[0-9]{15}\b'` must show only the
   synthetic values. `.gitignore` blocks filing artifacts; don't weaken it.
 - **Standard library only** (Python >= 3.11). No runtime dependencies.
 - **Field numbers are 1-based**, matching the spec xlsx. In code: `f[n - 1]` / `_rec(kind, {n: value})`.
