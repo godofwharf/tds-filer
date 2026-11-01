@@ -19,6 +19,32 @@ statements: its ERI APIs cover ITR filing only and require approval as an interm
 
 ## Installation
 
+### One-line install (dependencies + agent skill)
+```sh
+curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
+  https://raw.githubusercontent.com/godofwharf/tds-filer/master/install.sh | bash
+```
+The repository is private, so the request passes your GitHub CLI token. Once the repo is public, drop the `-H …` part.
+
+[`install.sh`](install.sh) does the following:
+- checks for macOS;
+- installs **uv** and **Node.js** if they're missing (with Homebrew if present);
+- checks for **Java**;
+- makes sure git can read this repo, running `gh auth setup-git` if needed;
+- runs `uvx` once so the `tds` CLI is built and cached;
+- installs the **tds-filing** skill for Claude Code and OpenCode via `npx skills`.
+
+It doesn't download Protean's FVU or create your config; it prints those next steps at the end.
+To review the script before running it, download it to a file first and run it with `bash install.sh`.
+
+Options are passed as environment variables on the `bash` side of the pipe, e.g. `… | TDS_SKILL_SCOPE=project bash`:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TDS_SKILL_SCOPE` | `global` | `global` (all projects) or `project` (current directory) |
+| `TDS_AGENTS` | `claude-code opencode` | agents to install the skill for |
+| `TDS_REF` | `master` | branch, tag or commit of tds-filer to use |
+| `DO_NOT_TRACK` | unset | `1` turns off the `skills` CLI telemetry |
 ### CLI
 `uvx` can run the CLI straight from the git repository, with no clone and no install:
 ```sh
