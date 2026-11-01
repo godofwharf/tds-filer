@@ -136,6 +136,8 @@ def cmd_record_rrr(args) -> None:
 
 def cmd_fetch(args) -> None:
     from . import portal
+    if getattr(args, "forget_token", False) and portal.forget_copilot_token():
+        print(f"Deleted stored Copilot token {portal.TOKEN_FILE}")
     cfg, qt, qdir = _ctx(args)
     what = [w.strip() for w in args.what.split(",") if w.strip()]
     bad = set(what) - set(portal.WHAT)
@@ -236,9 +238,10 @@ def main(argv: list[str] | None = None) -> int:
     f = q("fetch", cmd_fetch, "download challans/CSI/previous RRR from the portal (needs [portal] extra)")
     f.add_argument("--what", default=",".join(("challans", "csi", "rrr")), help="comma list: challans,csi,rrr")
     f.add_argument("--model", default="github-copilot:gpt-4.1",
-                   help="pydantic-ai model 'provider:name' (default uses GitHub Copilot via `gh auth token`; "
-                        "e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
+                   help="pydantic-ai model 'provider:name' (default: GitHub Copilot; token asked once and stored in "
+                        "~/.config/tds-filer/copilot_token; e.g. anthropic:claude-sonnet-4-5, openai:gpt-4.1, ollama:qwen3)")
     f.add_argument("-y", "--yes", action="store_true", help="record a newly fetched RRR without prompting")
+    f.add_argument("--forget-token", action="store_true", help="delete the stored Copilot token (asks again)")
     rr = q("record-rrr", cmd_record_rrr, "save the 15-digit RRR/token after upload")
     rr.add_argument("rrr")
     rr.add_argument("--force", action="store_true")

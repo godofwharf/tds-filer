@@ -253,6 +253,23 @@ class PortalTest(unittest.TestCase):
         from tds_filer import cli
         self.assertEqual(cli.main(["--config", str(self.cfg.path), "fetch", "2026-27", "Q2", "--what", "tracess"]), 1)
 
+    def test_copilot_token_store(self):
+        from unittest import mock
+        from tds_filer import portal
+        f = self.tmp / "cfgdir" / "copilot_token"
+        with mock.patch.dict("os.environ", {}, clear=True):
+            asks = []
+            tok = portal._copilot_token(f, ask=lambda p: asks.append(p) or "gho_test")
+            self.assertEqual((tok, len(asks)), ("gho_test", 1))
+            self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(f.parent.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(portal._copilot_token(f, ask=lambda p: self.fail("asked again")), "gho_test")
+            self.assertTrue(portal.forget_copilot_token(f))
+            with self.assertRaises(TdsError):
+                portal._copilot_token(f, ask=lambda p: "")
+        with mock.patch.dict("os.environ", {"GITHUB_COPILOT_API_KEY": "env"}):
+            self.assertEqual(portal._copilot_token(f, ask=lambda p: self.fail("asked")), "env")
+
     def test_pydantic_adapter(self):
         try:
             import browser_use  # noqa: F401

@@ -89,15 +89,43 @@ def to_history(messages) -> tuple[list, str]:
     return hist, prompt
 
 
-def _copilot_token() -> str:
+TOKEN_FILE = Path("~/.config/tds-filer/copilot_token").expanduser()
+
+
+def _copilot_token(token_file: Path | None = None, ask=None) -> str:
+    """Env var, else the token stored on first use, else ask the user once and store it (0600)."""
     for var in ("GITHUB_COPILOT_API_KEY", "GITHUB_COPILOT_API_TOKEN", "COPILOT_GITHUB_TOKEN"):
         if os.environ.get(var):
             return os.environ[var]
-    import subprocess
-    try:
-        return subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as e:
-        raise TdsError("no Copilot token: run `gh auth login` or set GITHUB_COPILOT_API_KEY") from e
+    f = token_file or TOKEN_FILE
+    if f.exists():
+        if f.stat().st_mode & 0o077:
+            f.chmod(0o600)
+        tok = f.read_text().strip()
+        if tok:
+            return tok
+    if ask is None:
+        import getpass
+        ask = getpass.getpass
+    print("A GitHub Copilot OAuth token is needed (e.g. `gho_…` from a Copilot login). "
+          f"It will be stored in {f} (mode 0600) and reused.")
+    tok = ask("Copilot token (input hidden): ").strip()
+    if not tok:
+        raise TdsError("no Copilot token given")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.parent.chmod(0o700)
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(tok + "\n")
+    return tok
+
+
+def forget_copilot_token(token_file: Path | None = None) -> bool:
+    f = token_file or TOKEN_FILE
+    if f.exists():
+        f.unlink()
+        return True
+    return False
 
 
 def make_model(spec: str):

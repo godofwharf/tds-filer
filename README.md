@@ -111,10 +111,11 @@ npx skills remove tds-filing -g
 ### Optional: fetch inputs from the portal (`tds fetch`)
 Steps 1–2 and the previous quarter's RRR can be collected by a [browser-use](https://github.com/browser-use/browser-use)
 agent. The model is called through [pydantic-ai](https://ai.pydantic.dev), so any pydantic-ai provider works via
-`--model provider:name`. The default, `github-copilot:gpt-4.1`, uses your GitHub Copilot subscription with the token
-from `gh auth token` (or `GITHUB_COPILOT_API_KEY`); no Anthropic/OpenAI key needed. Others: `anthropic:…`
+`--model provider:name`. The default, `github-copilot:gpt-4.1`, uses your GitHub Copilot subscription: on first use you are
+asked for a Copilot OAuth token (input hidden), which is stored in `~/.config/tds-filer/copilot_token` (0600) and
+reused; `GITHUB_COPILOT_API_KEY` overrides it and `--forget-token` deletes it. No Anthropic/OpenAI key needed. Others: `anthropic:…`
 (`ANTHROPIC_API_KEY`), `openai:…` (`OPENAI_API_KEY`), `ollama:…` (local). Which Copilot model ids work depends on your
-plan and token (`gh`'s token got `model_not_supported` for Claude ids in testing).
+plan and token (a `gh` CLI token got `model_not_supported` for Claude ids in testing).
 ```sh
 uv sync --extra portal && uvx browser-use install
 uv run tds fetch 2026-27 Q3                 # --what challans,csi,rrr (default: all)
